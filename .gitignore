@@ -1,3 +1,6 @@
 xm2tiatune_src/target
 *.lock
 *.bin
+*.sym
+acme
+xm2tiatune
