@@ -2,5 +2,6 @@ xm2tiatune_src/target
 *.lock
 *.bin
 *.sym
+music.asm
 acme
 xm2tiatune
