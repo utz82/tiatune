@@ -1,0 +1,11 @@
+[package]
+name = "xm2tiatune"
+version = "0.1.0"
+license = "MIT"
+authors = ["utz82 <utz82@users.noreply.github.com>"]
+
+[profile.release]
+lto = true
+
+[dependencies]
+xmkit = { git = "https://github.com/utz82/xmkit" }
