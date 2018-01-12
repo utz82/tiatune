@@ -8,7 +8,7 @@ ABOUT
 ================================================================================
 
 TIAtune is a music driver for the Atari 2600 (VCS) console. Unlike other TIA
-music drivers, it does not rely on the on the TIA's build-in frequency
+music drivers, it does not rely on the on the TIA's built-in frequency
 dividers. That means that the detune usually associated with TIA music is absent
 in TIAtune.
 
@@ -29,7 +29,7 @@ Limitations
 - no support for AUDC waveforms 2, 3, E
 
 
-The TIAtune source is designed to be assembled with the ACME cross assembler.
+The TIAtune source is designed to be assembled with the ACME cross-assembler.
 
 
 XM CONVERTER
@@ -39,7 +39,7 @@ You can use the provided music.xm template to compose music for TIAtune. To use
 the converter, you must first install the ACME assembler, which is available at 
 https://sourceforge.net/projects/acme-crossass/. You should also have the Stella
 emulator installed. Then simply run compile.cmd (Windows) or compile.sh 
-(*nix, Mac) to convert, assemble, and run the result in Stella.
+(*nix, Mac OS X) to convert, assemble, and run the result in Stella.
 
 The following limitations apply:
 
@@ -60,7 +60,7 @@ Linux and Mac users will have to build the converter from source. Provided you
 have Rust and Cargo installed, building the converter should be a simple matter
 of running
 
-cargo build --release
+  cargo build --release
 
 in the xm2tiatune directory and then moving the build from target/release to the
 main directory.
@@ -72,6 +72,7 @@ MUSIC DATA FORMAT
 Music data for TIAtune consists of a sequence, followed by one or more patterns.
 The music data must be provided in a file named "music.asm", which is included
 by the main file.
+
 
 Sequence
 ========
