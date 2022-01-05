@@ -1,7 +1,15 @@
 ********************************************************************************
-TIAtune v0.1.0
+TIAtune v0.2.0
 by utz 11'2017 * irrlichtproject.de
+updated by Thomas Jentzsch 01'2022
 ********************************************************************************
+
+Updates
+================================================================================
+Optimized waveform generation code. This increased the sample rate from 10.4 to 
+13.0 kHz. Since the new code uses tables, the missing waveforms can be easily 
+added too. Also about 256 more bytes are free now for music.
+TODOs: The frequency dividers and the music lengths have to be updated.
 
 
 ABOUT
