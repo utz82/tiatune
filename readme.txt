@@ -6,10 +6,10 @@ updated by Thomas Jentzsch 01'2022
 
 Updates
 ================================================================================
-Optimized waveform generation code. This increased the sample rate from 10.4 to 
-13.0 kHz. Since the new code uses tables, the missing waveforms can be easily 
-added too. Also about 256 more bytes are free now for music.
-TODOs: The frequency dividers and the music lengths have to be updated.
+Optimized waveform generation code. This increased the sample rate from 10.4 to
+13.0 kHz. Since the new code uses tables, the missing waveforms can be easily
+added too. Also about 320 more bytes are free now for music.
+TODOs: The music lengths of the demo song have to be updated.
 
 
 ABOUT
@@ -34,7 +34,7 @@ Limitations
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
 - fairly large player (1147 bytes)
-- no support for AUDC waveforms 2, 3, E
+- no support for AUDC waveforms 2, 3, E (yet)
 
 
 The TIAtune source is designed to be assembled with the ACME cross-assembler.
@@ -44,9 +44,9 @@ XM CONVERTER
 ================================================================================
 
 You can use the provided music.xm template to compose music for TIAtune. To use
-the converter, you must first install the ACME assembler, which is available at 
+the converter, you must first install the ACME assembler, which is available at
 https://sourceforge.net/projects/acme-crossass/. You should also have the Stella
-emulator installed. Then simply run compile.cmd (Windows) or compile.sh 
+emulator installed. Then simply run compile.cmd (Windows) or compile.sh
 (*nix, Mac OS X) to convert, assemble, and run the result in Stella.
 
 The following limitations apply:
@@ -54,17 +54,17 @@ The following limitations apply:
 - Any changes to instruments/samples are ignored.
 - Changes to BPM are ignored.
 - FX commands are ignored, except for Fxx (change tempo, xx < 0x20)
-- The range of instrument 3 is limited to C-0..E-4, and the range of instruments
-  4 and 5 is limited to C-0..E-3.
+- The range of instrument 3 is limited to C-0..Gis-5, and the range of instruments
+  4 and 5 is limited to C-0..Gis-4.
 
 Pattern length is also limited. The actual limit depends on the converted data
 size. In the worst case, you will run out of bytes after 51 rows, but normally
 you can get away with 64 and more rows. Generally it is a good idea to keep
-patterns short, though. The converter optimizes pattern data, but not the 
-overall pattern structure. That means you can often save some bytes by breaking 
+patterns short, though. The converter optimizes pattern data, but not the
+overall pattern structure. That means you can often save some bytes by breaking
 down your patterns into smaller parts and removing redundancies.
 
-Linux and Mac users will have to build the converter from source. Provided you 
+Linux and Mac users will have to build the converter from source. Provided you
 have Rust and Cargo installed, building the converter should be a simple matter
 of running
 
@@ -86,19 +86,19 @@ Sequence
 ========
 
 The sequence contains a list of pointers to patterns, in the order in which they
-are to be played. Is is split into a hi-byte and a lo-byte part, labelled 
+are to be played. Is is split into a hi-byte and a lo-byte part, labelled
 "sequence_hi" and "sequence_lo", respectively. The hi-byte list must be
 terminated with a 0-byte.
 
-The sequence may at most contain 255 entries. The most simple sequence 
+The sequence may at most contain 255 entries. The most simple sequence
 would thus be:
 
 sequence_hi
-	!byte pattern>>8
-	!byte 0
+    !byte pattern>>8
+    !byte 0
 sequence_lo
-	!byte pattern&$ff
-	
+    !byte pattern&$ff
+
 
 Patterns
 ========
@@ -122,13 +122,13 @@ If bit 7 of byte 1 is set, byte 2 and 3 are omitted. Likewise, if bit 6 of byte
 1 is set, byte 4 and 5 are omitted. On the first step of the first pattern in
 the sequence, no data bytes may be omitted.
 
-AUDCx equivalents of the waveform parameter, and their note ranges are as 
+AUDCx equivalents of the waveform parameter, and their note ranges are as
 follows:
 
 wave  AUDCx      range
 0     4,5,C,D    c-0..dis8
 1     8          c-0..dis8
-2     1	         c-0..e-4
+2     1          c-0..e-4
 3     6,A        c-0..e-3
 4     7,9        c-0..e-3
 

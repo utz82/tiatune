@@ -1,1 +1,1 @@
-xm2tiatune.exe && acme main.asm && stella test.bin
+xm2tiatune.exe && acme -r main.lst main.asm && test.bin
