@@ -1,597 +1,434 @@
+; Ideas
+; + get rid of initial CLC
+; + keep variables in X/Y
+; + inline waveform code into RAM
+; + precalulate waveforms
+;   - poly4_5
+; - rowLen via TIMxxT
+; TODOs
+; - adapt FreqDiv tables to faster loop
+; - adapt tone lengths to faster loop
+
 ;TIAtune
 ;Atari 2600 music player
 ;by utz 10'2017 * irrlichtproject.de
+;updated by Thomas Jentzsch 01'2021
 
-	!to "test.bin", plain
-	!sl "test.sym"
-	!cpu 6510
+;wave  AUDCx      range         type
+;0     4,5,C,D    c-0..dis8     square div2
+;1     8          c-0..dis8     poly9  div2
+;2     1          c-0..e-4      poly4  div15
+;3     6,A        c-0..e-3      r1813  div15
+;4     7,9        c-0..e-3      poly5  div31
+;5     3
 
-	!source "vcs.h"
-	!source "notes.h"
-	
-SEQOFFS	= $d0			;s=ence offset
-PTNPTRL	= $d1
-PTNPTRH	= $d2
-PTNOFFS	= $d3
-ROWLENL	= $d4			;do Rowlen via Timer
-ROWLENH	= $d5
-POLY4VAL1 = $e0
-POLY5VAL1 = $e1
-POLY9VAL1L = $e2
-POLY9VAL1H = $e3
-SQUAREVAL1 = $e4
-R1813_1 = $e5
-T1813_1 = $e6
-VOL1 = $e7
-POLY4VAL2 = $e8
-POLY5VAL2 = $e9
-POLY9VAL2L = $ea
-POLY9VAL2H = $eb
-SQUAREVAL2 = $ec
-R1813_2 = $ed
-T1813_2 = $ee
-VOL2 = $ef
-CONST80 = $f0
-CONST0 = $f1
-CONST18 = $f2
+; define which waveforms should be excluded
+NO_POLY9    = 0
+NO_POLY4_5  = 0 ;TODO
 
-	* = $f000
-	!zone main
+        !to "test.bin", plain
+        !sl "test.sym"
+        !cpu 6510
+
+        !source "vcs.h"
+        !source "notes.h"
+
+        * = $f080, invisible
+        !pseudopc $80 {
+seqOffs     !byte 0     ;seqence offset
+ptnPtrL     !byte 0
+ptnPtrH     !byte 0
+ptnOffs     !byte 0
+rowLenL     !byte 0     ;do Rowlen via Timer
+rowLenH     !byte 0
+VAR_END
+        }
+
+    !macro CreatePoly .init, .count, .tap1, .tap2 {
+        !set .val = .init
+        !set .idx = 0
+        !for .x, 0, .count {
+            !if (.val & .tap1) = .tap1 XOR (.val & .tap2) = .tap2 {
+                !set .add = 1
+            } else {
+                !set .add = 0
+            }
+            !set .val = (.val << 1) + .add
+            !set .pat = .pat << 1
+            !if (.val & 1) = 1 {
+                !set .pat = .pat | 1
+            }
+            !set .idx = .idx + 1
+            !if .idx = 8 {
+              !set .idx = 0
+              !byte <.pat
+              !set .pat = 0
+            }
+        }
+        !set .pat = .pat << 1
+        !byte <.pat
+    }
+
+    *       = $f000
+    !zone main
+
+PatternTbl
+;Note: 1st bit of a pattern MUST always be set!
+SquarePtn
+    !byte   %01010101
+Poly9Ptn
+  !ifndef NO_POLY9 {
+    +CreatePoly 1, 510, 8, 256
+  }
+Poly4Ptn
+    +CreatePoly 1, 14, 1, 8
+;    !byte   %01110000, %10100110
+R1813Ptn
+    !byte   %00000000, %00000111, %11111111, %11111110
+Poly5Ptn
+    +CreatePoly 1, 30, 2, 16
+;    !byte   %00001010, %11101100, %01111100, %11010010
+Poly4_5Ptn  ;TODO
+  !ifndef NO_POLY4_5 {
+  }
+
+PatternPtr
+    !byte   <SquarePtn, <Poly9Ptn, <Poly4Ptn, <R1813Ptn, <Poly5Ptn
+InitVal
+    !byte   $ea, $0a, $0a, $0a, $0a ; NOP, ASL
+ResetVal
+    !byte     0,  63,   1,   3,   3
+
 reset
-        ldx #0			;clear TIA regs, RAM, set SP to $00ff
-        txa			;alternatively just use CLEAN_START macro
--   
-	dex
-        txs
-        pha
-        bne -
-	
-relocate_player			;relocate to zeropage
-	ldx #0
+    ldx     #0                  ;clear TIA regs, RAM, set SP to $00ff
+    txa                         ;alternatively just use CLEAN_START macro
 -
-	lda playerCode,x
-	sta $80,x
-	inx
-	cpx #playerCode_End - playerCode
-	bne -
-	
-	lda #$f
-	sta POLY4VAL1
-	sta POLY4VAL2
-	lda #18
-	sta T1813_1
-	sta T1813_2
-	sta CONST18
-	lda #$1f
-	sta POLY5VAL1
-	sta POLY5VAL2
-	lda #$ff
-	sta POLY9VAL1L
-	sta POLY9VAL2L
-	sta SQUAREVAL1
-	sta SQUAREVAL2
-	sta R1813_1
-	sta R1813_2
-	lda #$80
-	sta POLY9VAL1H
-	sta POLY9VAL2H
-	sta CONST80
+    dex
+    txs
+    pha
+    bne     -
 
-rdSeq				;read next entry in sequence
-	ldx SEQOFFS
-	lda sequence_hi,x
-	beq reset		;if hi-byte = 0, loop
-	sta PTNPTRH
-	lda sequence_lo,x		
-	sta PTNPTRL
-	inx
-	stx SEQOFFS	
-	ldy #0
-	
-rdPtn	
-	lda (PTNPTRL),y		;ctrl byte
-	beq rdSeq		;0-end marker
-	
-	sta ROWLENH
-	bmi no_ch1_reload
-	
-	iny
-	lda (PTNPTRL),y		;wave1/vol1
-	tax
-	lsr
-	lsr
-	lsr
-	sta+1 VOL1
-	txa
-	and #$7
-	tax
-	lda wave_sub_lut_ch1,x
-	sta+1 WAVEP1
+;relocate player to zeropage
+    ldx     #PlayerCode_End - PlayerCode - 1
+-
+    lda     PlayerCode,x
+    sta     VAR_END,x
+    dex
+    bpl     -
 
-	iny
-	txa			;look up freq divider depending on waveform used
-	cmp #2	
-	bcs +			;0,1 -> square/poly9
-	lda (PTNPTRL),y		;note
-	tax
-	lda freq_div2_lsb,x
-	sta+1 FREQ1L
-	lda freq_div2_msb,x
-	sta+1 FREQ1H
-	jmp .cont
-+		
-	bne +			;2 -> poly4
-	lda (PTNPTRL),y
-	tax
-	lda freq_div15_lsb,x
-	sta+1 FREQ1L
-	lda freq_div15_msb,x
-	sta+1 FREQ1H
-	jmp .cont
+.readSeq                        ;read next entry in sequence
+    ldy     seqOffs
+    lda     sequence_hi,y
+    beq     reset               ;if hi-byte = 0, loop
+    sta     ptnPtrH
+    lda     sequence_lo,y
+    sta     ptnPtrL
+    inc     seqOffs
+    ldy     #0
+    sty     ptnOffs
+
+ReadPtn
+    ldy     ptnOffs
+    lda     (ptnPtrL),y         ;ctrl byte
+    beq     .readSeq            ;0-end marker
+
+    sta     rowLenH
+    bmi     .noCh0Reload
+
+    iny
+    lax     (ptnPtrL),y         ;wave0/vol0
+    lsr
+    lsr
+    lsr
+    sta+1   Vol0
+    txa
+    and     #$7
+    tax
+    lda     PatternPtr,x
+    sta+1   Pattern0
+    lda     InitVal,x
+    sta+1   Init0
+    lda     ResetVal,x
+    sta+1   Reset0
+
+    iny
+    cpx     #2                  ;look up freq divider depending on waveform used
+    bcs     +                   ;0,1 -> square/poly9
+    lax     (ptnPtrL),y         ;note
+    lda     FreqDiv2Lsb,x
+    sta+1   Freq0L
+    lda     FreqDiv2Msb,x
+    bcc     .contCh0
+
 +
-	lda (PTNPTRL),y		;3,4 -> 1813/poly5
-	tax
-	lda freq_div31_lsb,x
-	sta+1 FREQ1L
-	lda freq_div31_msb,x
-	sta+1 FREQ1H	
-.cont	
-no_ch1_reload
-	bit ROWLENH
-	bvs no_ch2_reload
-		
-	iny
-	lda (PTNPTRL),y		;wave2/vol
-	tax
-	lsr
-	lsr
-	lsr
-	sta+1 VOL2
-	txa
-	and #$7
-	tax
-	lda wave_sub_lut_ch2,x
-	sta+1 WAVEP2
+    bne     +                   ;2 -> poly4
+    lax     (ptnPtrL),y
+    lda     FreqDiv15Lsb,x
+    sta+1   Freq0L
+    lda     FreqDiv15Msb,x
+    bcs     .contCh0
 
-	iny
-	txa			;look up freq divider depending on waveform used
-	cmp #2	
-	bcs +
-	lda (PTNPTRL),y		;note
-	tax
-	lda freq_div2_lsb,x
-	sta+1 FREQ2L
-	lda freq_div2_msb,x
-	sta+1 FREQ2H
-	jmp .cont2
-+			
-	bne +
-	lda (PTNPTRL),y
-	tax
-	lda freq_div15_lsb,x
-	sta+1 FREQ2L
-	lda freq_div15_msb,x
-	sta+1 FREQ2H
-	jmp .cont2
 +
-	lda (PTNPTRL),y
-	tax
-	lda freq_div31_lsb,x
-	sta+1 FREQ2L
-	lda freq_div31_msb,x
-	sta+1 FREQ2H	
-.cont2
-no_ch2_reload
-	iny
+    lax     (ptnPtrL),y         ;3,4 -> 1813/poly5
+    lda     FreqDiv31Lsb,x
+    sta+1   Freq0L
+    lda     FreqDiv31Msb,x
+.contCh0
+    sta+1   Freq0H
+.noCh0Reload
 
-	lda ROWLENH
-	and #$3f
-	sta ROWLENH	
-	jmp playNote
+    bit     rowLenH
+    bvs     .noCh1Reload
+
+    iny
+    lax     (ptnPtrL),y         ;wave1/vol1
+    lsr
+    lsr
+    lsr
+    sta+1   Vol1
+    txa
+    and     #$7
+    tax
+    lda     PatternPtr,x
+    sta+1   Pattern1
+    lda     InitVal,x
+    sta+1   Init1
+    lda     ResetVal,x
+    sta+1   Reset1
+
+    iny
+    cpx     #2                  ;look up freq divider depending on waveform used
+    bcs     +                   ;0,1 -> square/poly9
+    lax     (ptnPtrL),y         ;note
+    lda     FreqDiv2Lsb,x
+    sta+1   Freq1L
+    lda     FreqDiv2Msb,x
+    bcc     .contCh1
+
++
+    bne     +                   ;2 -> poly4
+    lax     (ptnPtrL),y
+    lda     FreqDiv15Lsb,x
+    sta+1   Freq1L
+    lda     FreqDiv15Msb,x
+    bcs     .contCh1
+
++
+    lax     (ptnPtrL),y         ;3,4 -> 1813/poly5
+    lda     FreqDiv31Lsb,x
+    sta+1   Freq1L
+    lda     FreqDiv31Msb,x
+.contCh1
+    sta+1   Freq1H
+.noCh1Reload
+
+    iny
+    sty     ptnOffs
+
+    lda     rowLenH
+    and     #$3f
+    sta     rowLenH
+    lsr
+    lsr
+    adc     rowLenH
+    sta     rowLenH
+
+    ldx     #$ff
+    stx+1   Mask0
+    stx+1   Mask1
+    inx
+    ldy     #0
+    jmp     PlayNote
 
 
-playerCode = *
+PlayerCode = *
 
-	!pseudopc $80 {			;actual player runs on zeropage
-playNote
-	clc			;2
-SUM1L = *+1
-	lda #0			;2
-FREQ1L = *+1
-	adc #0			;2
-	sta SUM1L		;3
-SUM1H = *+1
-	lda #0			;2
-FREQ1H = *+1
-	adc #0			;2
-	sta SUM1H		;3
-	
-	bcc wait_ch1		;3/2
-WAVEP1 = *+1
-	jmp poly4_ch1		;3 (+32 = 37)
+    !pseudopc VAR_END {         ;actual player runs on zeropage
 
-continue_ch1
-	clc			;2
-SUM2L = *+1	
-	lda #0			;2	;carry should always be reset at this point
-FREQ2L = *+1
-	adc #0			;2
-	sta SUM2L		;3
-SUM2H = *+1
-	lda #0			;2
-FREQ2H = *+1
-	adc #0			;2
-	sta SUM2H		;3
-	
-	bcc wait_ch2		;3/2
-WAVEP2 = *+1
-	jmp poly4_ch2		;3
+.waitCh0                        ;3
+    jmp     WaitCh0             ;25  = 28
 
-continue_ch2
-	dec ROWLENL		;5
-	bne playNote		;3/2
-				;avg 114
-	dec ROWLENH
-	bne playNote
-		
-	jmp rdPtn		;3
-	
-wait_ch1
-	lda (0,x)		;6
-	lda (0,x)		;6
-	lda (0,x)		;6
-wait_ch1x
-	lda (0,x)		;6
-	lda 0			;3
-	nop			;2
-	nop			;2
-	jmp continue_ch1	;3
+PlayNote
+Sum0L   = *+1
+    lda     #0                  ;2
+Freq0L  = *+1
+    adc     #0                  ;2           CF==1!
+    sta     Sum0L               ;3
+Sum0H   = *+1
+    lda     #0                  ;2
+Freq0H  = *+1
+    adc     #0                  ;2
+    sta     Sum0H               ;3   = 14
 
-wait_ch2
-	lda (0,x)		;6
-	lda (0,x)		;6
-	lda (0,x)		;6
-wait_ch2x
-	lda (0,x)		;6
-	lda 0			;3
-	nop			;2
-	nop			;2
-	jmp continue_ch2	;3
+    bcc     .waitCh0            ;2/3 = 2/3
+;create waveform from table
+;assumes 1st bit of waveform alwaws set
+Mask0   = *+1
+    lda     #0                  ;2
+    bmi     .nextMask0          ;2/3
+    asl                         ;2
+    sec                         ;2
+    bne     .cont0              ;3
+
+.nextMask0                      ;5
+    lda     #$01                ;2
+    dex                         ;2
+    bmi     .resetIdx0          ;2/3
+.cont0
+    sta+1   Mask0               ;3   = 14
+Pattern0 = *+1
+    and     PatternTbl,x        ;4
+    bne     .loadV0             ;2/3
+    beq     .zeroV0             ;3
+
+.resetIdx0                      ;12          assumes 1st bit set
+Reset0  = *+1
+    ldx     #3                  ;2           0,1,3,63(,57)
+Init0   = *
+    asl                         ;2           or NOP (square,poly4->5)
+;    lda     #$02                ;2           or $01 (square,poly4->5)
+    sta+1   Mask0               ;3
+    sec                         ;2   (= 14 = 21-7)
+.loadV0
+Vol0    = *+1
+    lda     #0                  ;2
+.zeroV0
+    sta     AUDV0               ;3   = 12
+ContinueCh0
+
+Sum1L   = *+1
+    lda     #0                  ;2
+Freq1L  = *+1
+    adc     #0                  ;2           CF==1!
+    sta     Sum1L               ;3
+Sum1H   = *+1
+    lda     #0                  ;2
+Freq1H  = *+1
+    adc     #0                  ;2
+    sta     Sum1H               ;3   = 14
+
+    bcc     .waitCh1            ;2/3 =  2/3
+Mask1   = *+1
+    lda     #0                  ;2
+    bmi     .nextMask1          ;2/3
+    asl                         ;2
+    sec                         ;2
+    bne     .cont1              ;3
+
+.nextMask1                      ;5
+    lda     #$01                ;2
+    dex                         ;2
+    bmi     .resetIdx1          ;2/3
+.cont1
+    sta+1   Mask1               ;3   = 14
+Pattern1 = *+1
+    and     PatternTbl,x        ;4
+    bne     .loadV1             ;2/3
+    beq     .zeroV1             ;3
+
+.resetIdx1                      ;12          assumes 1st bit set
+Reset1  = *+1
+    ldx     #3                  ;2           0,1,3,63,57
+Init1   = *
+    asl                         ;2           or NOP (square,poly4->5)
+    sta+1   Mask1               ;3
+    sec                         ;2   (= 14 = 21-7)
+.loadV1
+Vol1    = *+1
+    lda     #0                  ;2
+.zeroV1
+    sta     AUDV1               ;3   = 12
+ContinueCh1
+
+    dec     rowLenL             ;5          always loops 256 times here
+    bne     PlayNote            ;3/2 =  8/7
+                                ;           avg 92 cycles (was 114)
+    dec     rowLenH
+    bne     PlayNote
+
+    jmp     ReadPtn             ;3
+
+.waitCh1                        ;3
+    jmp     WaitCh1             ;25 = 28
 }
 
-playerCode_End = *
-
-freq_div15_lsb
-	!byte $9,$63,$bd,$26,$8f,$7,$7f,$6,$8d,$23,$b9,$5e
-	!byte $3,$c6,$7a,$4c,$2d,$e,$fe,$c,$1a,$37,$72,$bc
-	!byte $15,$7d,$3,$98,$4b,$1c,$b,$9,$34,$7d,$e4,$69
-	!byte $1b,$fa,$6,$3f,$a5,$38,$7,$21,$68,$eb,$b9,$d2
-	!byte $45,$f4,$c,$6f,$3b,$7f,$1d,$33,$c1,$d6,$81,$b3
-	!byte $7b,$e8,$9,$ed,$85
-
-freq_div15_msb
-	!byte $6,$6,$6,$7,$7,$8,$8,$9,$9,$a,$a,$b
-	!byte $c,$c,$d,$e,$f,$10,$10,$12,$13,$14,$15,$16
-	!byte $18,$19,$1b,$1c,$1e,$20,$22,$24,$26,$28,$2a,$2d
-	!byte $30,$32,$36,$39,$3c,$40,$44,$48,$4c,$50,$55,$5a
-	!byte $60,$65,$6c,$72,$79,$80,$88,$90,$98,$a1,$ab,$b5
-	!byte $c0,$cb,$d8,$e4,$f2
-
-freq_div31_lsb
-	!byte $79,$33,$ed,$c6,$9f,$97,$8f,$a6,$bd,$f3,$29,$7e
-	!byte $d3,$66,$da,$8c,$5d,$2e,$1e,$4c,$7a,$c7,$52,$fc
-	!byte $c5,$ad,$d3,$18,$9b,$5c,$5b,$79,$f4,$ad,$a4,$d9
-	!byte $6b,$5a,$a6,$4f,$55,$b8,$97,$11,$e8,$3b,$29,$b2
-	!byte $f5,$b4,$4c,$7f,$8b
-ft1end
-
-	* = $f200
-; square				;TODO watch out for code crossing page -> lookup table
-; 18:13
-; mute possibly needs its own core
-	
-square_ch1
-	lda (0,x)		;6
-	lda (0,x)		;6
-	lda 0			;3
-	lda SQUAREVAL1		;3
-	eor #$ff		;2
-	sta SQUAREVAL1		;3
-	and VOL1		;3
-	sta AUDV0		;3
-	jmp continue_ch1	;3
-				;32
-	
-	!zone r1813_1			
-r1813_ch1
-	dec T1813_1		;5
-	bne .noupd		;3/2
-	lda R1813_1		;3
-	eor #$ff		;2
-	sta R1813_1		;3
-	beq +			;3/2
-	and VOL1		;3
-	sta AUDV0		;5
-	lda CONST18		;3
-	sta T1813_1		;3
-	jmp continue_ch1	;3
-				;32
-+
-	lda CONST0		;3
-	sta AUDV0		;3
-	lda #13			;2
-	sta T1813_1		;3
-	jmp continue_ch1	;3
-				;22
-
-.noupd
-	lda 0			;3
-	nop			;2
-	jmp wait_ch1x		;3	
-	
-	!zone poly4_1
-poly4_ch1				;init POLY4VAL1 with $f
-	nop			;2
-	lda POLY4VAL1		;3
-	lsr			;2
-	tax			;2
-	eor POLY4VAL1		;3
-	lsr			;2
-	txa			;2
-	bcc .noc		;3/2
-	ora #8			;2
-	sta POLY4VAL1		;3
-	lda VOL1		;3
-	sta AUDV0		;3	;could be omitted (handle in main sound loop)
-	jmp continue_ch1	;3
-				;32 + 3 (jump to)
-
-.noc
-	and #7
-	sta POLY4VAL1
-	lda #0
-	sta AUDV0
-	jmp continue_ch1	;3 32 bytes	
-
-	!zone poly5_1
-poly5_ch1				;init with POLY5VAL1 = $1f
-	lda POLY5VAL1
-	lsr
-	tax
-	lsr
-	eor POLY5VAL1
-	lsr
-	txa
-	bcc .noc
-	ora #$10
-	sta POLY5VAL1
-	lda VOL1
-	sta AUDV0
-	jmp continue_ch1	;3 32t (+3 jump to)
-
-.noc
-	and #$f
-	sta POLY5VAL1
-	lda #0
-	sta AUDV0
-	jmp continue_ch1	;3
-
-	!zone poly9_1
-poly9_ch1				;init VALxH with 0, VALxL with $ff
-	lda POLY9VAL1L		;3
-	lsr			;2
-	ora POLY9VAL1H		;3
-	sta POLY9VAL1L		;3
-	and #8			;2	;FAIL: needs to be XOR'D
-	bcc .noc		;3/2
-	beq .cz			;3/2
-	lda CONST0		;3
-	sta POLY9VAL1H		;3
-	lda VOL1		;3
-	sta AUDV0		;3
-	jmp continue_ch1	;3
-				;32t	;can be aligned by loading constant from zp
-	
-.cz
-	lda #$80		;2
-	sta POLY9VAL1H		;3
-	lda VOL1		;3
-	sta AUDV0		;3
-	jmp continue_ch1	;3
-				;32t
-
-.noc
-	beq .nocz		;3/2
-	lda CONST80		;3
-	sta POLY9VAL1H		;3
-	lda #0			;2
-	sta AUDV0		;3
-	jmp continue_ch1	;3
-				;32t
-
-.nocz
-	nop			;2
-	nop			;2
-	sta POLY9VAL1H		;3
-	sta AUDV0		;3
-	jmp continue_ch1	;3
-				;32t
-
-wave_sub_lut_ch1
-	!byte square_ch1&$ff,poly9_ch1&$ff,poly4_ch1&$ff,r1813_ch1&$ff,poly5_ch1&$ff
-	
-wave_sub_lut_ch2
-	!byte square_ch2&$ff,poly9_ch2&$ff,poly4_ch2&$ff,r1813_ch2&$ff,poly5_ch2&$ff
-
-freq_div31_msb
-	!byte $c,$d,$d,$e,$f,$10,$11,$12,$13,$14,$16,$17
-	!byte $18,$1a,$1b,$1d,$1f,$21,$23,$25,$27,$29,$2c,$2e
-	!byte $31,$34,$37,$3b,$3e,$42,$46,$4a,$4e,$53,$58,$5d
-	!byte $63,$69,$6f,$76,$7d,$84,$8c,$95,$9d,$a7,$b1,$bb
-	!byte $c6,$d2,$df,$ec,$fa
-ffffffff
-	* = $f300
-	
-square_ch2
-	lda (0,x)		;6
-	lda (0,x)		;6
-	lda 0			;3
-	lda SQUAREVAL2		;3
-	eor #$ff		;2
-	sta SQUAREVAL2		;3
-	and VOL2		;3
-	sta AUDV1		;3
-	jmp continue_ch2	;3
-				;32
-				
-	!zone r1813_2			
-r1813_ch2
-	dec T1813_2		;5
-	bne .noupd		;3/2
-	lda R1813_2		;3
-	eor #$ff		;2
-	sta R1813_2		;3
-	beq +			;3/2
-	and VOL2		;3
-	sta AUDV1		;3
-	lda CONST18		;3
-	sta T1813_2		;3
-	jmp continue_ch2	;3
-				;32
-+
-	lda CONST0		;3
-	sta AUDV1		;3
-	lda #13			;2
-	sta T1813_2		;3
-	jmp continue_ch2	;3
-				;32
-.noupd
-	lda 0			;3
-	nop			;2
-	jmp wait_ch2x
-
-	!zone poly4_2
-poly4_ch2				;init POLY4VAL1 with $f
-	nop			;2
-	lda POLY4VAL2		;3
-	lsr			;2
-	tax			;2
-	eor POLY4VAL2		;3
-	lsr			;2
-	txa			;2
-	bcc .noc		;3/2
-	ora #8			;2
-	sta POLY4VAL2		;3
-	lda VOL2		;3
-	sta AUDV1		;3	;could be omitted (handle in main sound loop)	
-	jmp continue_ch2	;3
-				;32 + 3 (jump to)
-
-.noc
-	and #7
-	sta POLY4VAL2
-	lda #0
-	sta AUDV1
-	jmp continue_ch2	;3 32t
-
-	!zone poly5_2
-poly5_ch2				;init with POLY5VAL = $1f
-	lda POLY5VAL2
-	lsr
-	tax
-	lsr
-	eor POLY5VAL2
-	lsr
-	txa
-	bcc .noc
-	ora #$10
-	sta POLY5VAL2
-	lda VOL2
-	sta AUDV1
-	jmp continue_ch2	;3 32t (+3 jump to)
-
-.noc
-	and #$f
-	sta POLY5VAL2
-	lda #0
-	sta AUDV1
-	jmp continue_ch2	;3
-
-	!zone poly9_2
-poly9_ch2				;init VALxH with 0, VALxL with $ff
-	lda POLY9VAL2L		;3
-	lsr			;2
-	ora POLY9VAL2H		;3
-	sta POLY9VAL2L		;3
-	and #8			;2
-	bcc .noc		;3/2
-	beq .cz			;3/2
-	lda CONST0		;3	;lda #0, but wasting 1 extra cycle
-	sta POLY9VAL2H		;3
-	lda VOL2		;3
-	sta AUDV1		;3
-	jmp continue_ch2	;3
-				;32t	;can be aligned by loading constant from zp
-	
-.cz
-	lda #$80		;2
-	sta POLY9VAL2H		;3
-	lda VOL2		;3
-	sta AUDV1		;3
-	jmp continue_ch2	;3
-				;32t
-
-.noc
-	beq .nocz		;3/2
-	lda CONST80		;3	;lda #$80, but wasting 1 extra cycle
-	sta POLY9VAL2H		;3
-	lda #0			;2
-	sta AUDV1		;3
-	jmp continue_ch2	;3
-				;31t
-
-.nocz
-	nop			;2
-	nop			;2
-	sta POLY9VAL2H		;3
-	sta AUDV1		;3
-	jmp continue_ch2	;3
-				;32t
+PlayerCode_End = *
 
 
+WaitCh0                         ;3
+    jsr     Wait19              ;19
+    jmp     ContinueCh0         ;3  = 25
 
-freq_div2_lsb
-	!byte $ce,$da,$e6,$f4,$2,$12,$22,$34,$46,$5a,$6e,$84
-	!byte $9a,$b4,$cc,$e8,$6,$24,$44,$68,$8c,$b2,$dc,$8
-	!byte $36,$66,$9a,$d0,$a,$48,$8a,$ce,$18,$66,$b8,$e
-	!byte $6a,$cc,$34,$a2,$16,$90,$12,$9e,$30,$ca,$6e,$1c
-	!byte $d6,$98,$68,$42,$2a,$22,$26,$3a,$5e,$94,$de,$3a
-	!byte $aa,$30,$ce,$86,$56,$42,$4c,$74,$be,$2a,$ba,$72
-	!byte $54,$62,$9e,$a,$ac,$84,$98,$e8,$7c,$54,$76,$e6
-	!byte $a8,$c4,$3c,$16,$58,$8,$2e,$d0,$f6,$a6,$ea,$cc
-	!byte $52,$86,$76,$2a
+WaitCh1                         ;3
+    jsr     Wait19              ;19
+    jmp     ContinueCh1         ;3  = 25
 
-freq_div2_msb
-	!byte $0,$0,$0,$0,$1,$1,$1,$1,$1,$1,$1,$1
-	!byte $1,$1,$1,$1,$2,$2,$2,$2,$2,$2,$2,$3
-	!byte $3,$3,$3,$3,$4,$4,$4,$4,$5,$5,$5,$6
-	!byte $6,$6,$7,$7,$8,$8,$9,$9,$a,$a,$b,$c
-	!byte $c,$d,$e,$f,$10,$11,$12,$13,$14,$15,$16,$18
-	!byte $19,$1b,$1c,$1e,$20,$22,$24,$26,$28,$2b,$2d,$30
-	!byte $33,$36,$39,$3d,$40,$44,$48,$4c,$51,$56,$5b,$60
-	!byte $66,$6c,$73,$7a,$81,$89,$91,$99,$a2,$ac,$b6,$c1
-	!byte $cd,$d9,$e6,$f4
+Wait19                          ;6
+    bit    $ea                  ;3
+    nop                         ;2
+    sec                         ;2
+    rts                         ;6  = 19
 
+FreqDiv15Lsb
+    !byte    $9-1,$63-1,$bd-1,$26-1,$8f-1, $7-1,$7f-1, $6-1,$8d-1,$23-1,$b9-1,$5e-1
+    !byte    $3-1,$c6-1,$7a-1,$4c-1,$2d-1, $e-1,$fe-1, $c-1,$1a-1,$37-1,$72-1,$bc-1
+    !byte   $15-1,$7d-1, $3-1,$98-1,$4b-1,$1c-1, $b-1, $9-1,$34-1,$7d-1,$e4-1,$69-1
+    !byte   $1b-1,$fa-1, $6-1,$3f-1,$a5-1,$38-1, $7-1,$21-1,$68-1,$eb-1,$b9-1,$d2-1
+    !byte   $45-1,$f4-1, $c-1,$6f-1,$3b-1,$7f-1,$1d-1,$33-1,$c1-1,$d6-1,$81-1,$b3-1
+    !byte   $7b-1,$e8-1, $9-1,$ed-1,$85
 
+FreqDiv15Msb
+    !byte   $6,$6,$6,$7,$7,$8,$8,$9,$9,$a,$a,$b
+    !byte   $c,$c,$d,$e,$f,$10,$10,$12,$13,$14,$15,$16
+    !byte   $18,$19,$1b,$1c,$1e,$20,$22,$24,$26,$28,$2a,$2d
+    !byte   $30,$32,$36,$39,$3c,$40,$44,$48,$4c,$50,$55,$5a
+    !byte   $60,$65,$6c,$72,$79,$80,$88,$90,$98,$a1,$ab,$b5
+    !byte   $c0,$cb,$d8,$e4,$f2
 
-	!zone musicdata
+FreqDiv31Lsb
+    !byte   $79-1,$33-1,$ed-1,$c6-1,$9f-1,$97-1,$8f-1,$a6-1,$bd-1,$f3-1,$29-1,$7e-1
+    !byte   $d3-1,$66-1,$da-1,$8c-1,$5d-1,$2e-1,$1e-1,$4c-1,$7a-1,$c7-1,$52-1,$fc-1
+    !byte   $c5-1,$ad-1,$d3-1,$18-1,$9b-1,$5c-1,$5b-1,$79-1,$f4-1,$ad-1,$a4-1,$d9-1
+    !byte   $6b-1,$5a-1,$a6-1,$4f-1,$55-1,$b8-1,$97-1,$11-1,$e8-1,$3b-1,$29-1,$b2-1
+    !byte   $f5-1,$b4-1,$4c-1,$7f-1,$8b-1
+
+FreqDiv31Msb
+    !byte   $c,$d,$d,$e,$f,$10,$11,$12,$13,$14,$16,$17
+    !byte   $18,$1a,$1b,$1d,$1f,$21,$23,$25,$27,$29,$2c,$2e
+    !byte   $31,$34,$37,$3b,$3e,$42,$46,$4a,$4e,$53,$58,$5d
+    !byte   $63,$69,$6f,$76,$7d,$84,$8c,$95,$9d,$a7,$b1,$bb
+    !byte   $c6,$d2,$df,$ec,$fa
+
+FreqDiv2Lsb
+    !byte   $ce-1,$da-1,$e6-1,$f4-1, $2-1,$12-1,$22-1,$34-1,$46-1,$5a-1,$6e-1,$84-1
+    !byte   $9a-1,$b4-1,$cc-1,$e8-1, $6-1,$24-1,$44-1,$68-1,$8c-1,$b2-1,$dc-1, $8-1
+    !byte   $36-1,$66-1,$9a-1,$d0-1, $a-1,$48-1,$8a-1,$ce-1,$18-1,$66-1,$b8-1, $e-1
+    !byte   $6a-1,$cc-1,$34-1,$a2-1,$16-1,$90-1,$12-1,$9e-1,$30-1,$ca-1,$6e-1,$1c-1
+    !byte   $d6-1,$98-1,$68-1,$42-1,$2a-1,$22-1,$26-1,$3a-1,$5e-1,$94-1,$de-1,$3a-1
+    !byte   $aa-1,$30-1,$ce-1,$86-1,$56-1,$42-1,$4c-1,$74-1,$be-1,$2a-1,$ba-1,$72-1
+    !byte   $54-1,$62-1,$9e-1, $a-1,$ac-1,$84-1,$98-1,$e8-1,$7c-1,$54-1,$76-1,$e6-1
+    !byte   $a8-1,$c4-1,$3c-1,$16-1,$58-1, $8-1,$2e-1,$d0-1,$f6-1,$a6-1,$ea-1,$cc-1
+    !byte   $52-1,$86-1,$76-1,$2a-1
+
+FreqDiv2Msb
+    !byte   $0,$0,$0,$0,$1,$1,$1,$1,$1,$1,$1,$1
+    !byte   $1,$1,$1,$1,$2,$2,$2,$2,$2,$2,$2,$3
+    !byte   $3,$3,$3,$3,$4,$4,$4,$4,$5,$5,$5,$6
+    !byte   $6,$6,$7,$7,$8,$8,$9,$9,$a,$a,$b,$c
+    !byte   $c,$d,$e,$f,$10,$11,$12,$13,$14,$15,$16,$18
+    !byte   $19,$1b,$1c,$1e,$20,$22,$24,$26,$28,$2b,$2d,$30
+    !byte   $33,$36,$39,$3d,$40,$44,$48,$4c,$51,$56,$5b,$60
+    !byte   $66,$6c,$73,$7a,$81,$89,$91,$99,$a2,$ac,$b6,$c1
+    !byte   $cd,$d9,$e6,$f4
+
+    !zone musicdata
 musicData
-	!source "music.asm"
+    !source "music.asm"
 
-	
-	* = $fffc
 
-	!word reset          ; RESET
-	!word reset          ; IRQ
+    * = $fffc
 
-;    	END
+    !word   reset          ; RESET
+    !word   reset          ; IRQ
+
+;       END
