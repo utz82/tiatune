@@ -7,8 +7,8 @@ updated by Thomas Jentzsch 01'2022
 Updates
 ================================================================================
 Optimized waveform generation code. This increased the sample rate from 10.4 to
-13.0 kHz. Since the new code uses tables, the missing waveforms can be easily
-added too. Also about 320 more bytes are free now for music.
+13.1 kHz. Since the new code uses tables, the missing waveforms can be easily
+added too. Also about 310 more bytes are free now for music.
 TODOs: The music lengths of the demo song have to be updated.
 
 
@@ -33,7 +33,7 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (1147 bytes)
+- fairly large player (838, was 1147 bytes)
 - no support for AUDC waveforms 2, 3, E (yet)
 
 
