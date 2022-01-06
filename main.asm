@@ -31,15 +31,15 @@ NTSC    = 1
 ;NO_POLY9
 ;NO_POLY4_5 ;TODO
 
-        !to "tiatune.bin", plain
-        !sl "tiatune.sym"
-        !cpu 6510
+    !to "tiatune.bin", plain
+    !sl "tiatune.sym"
+    !cpu 6510
 
-        !source "vcs.h"
-        !source "notes.h"
+    !source "vcs.h"
+    !source "notes.h"
 
-        * = $f080, invisible
-        !pseudopc $80 {
+    * = $f000, invisible
+    !pseudopc $80 {
 seqOffs     !byte 0     ;seqence offset
 ptnPtrL     !byte 0
 ptnPtrH     !byte 0
@@ -49,7 +49,7 @@ rowLenH     !byte 0
 saveX       !byte 0
 saveY       !byte 0
 VAR_END
-        }
+    }
 
     !macro CreatePoly .init, .count, .tap1, .tap2 {
         !set .val = .init
@@ -291,20 +291,20 @@ ContinueCh1
                                 ;           avg 91 cycles (was 114)
 ;---------------------------------------
 PlayNote
-Sum0L   = *+1
+.sum0L  = *+1
     lda     #0                  ;2
 Freq0L  = *+1
     adc     #0                  ;2           CF==1!
-    sta     Sum0L               ;3
-Sum0H   = *+1
+    sta     .sum0L              ;3
+.sum0H  = *+1
     lda     #0                  ;2
 Freq0H  = *+1
     adc     #0                  ;2
-    sta     Sum0H               ;3   = 14
+    sta     .sum0H              ;3   = 14
 
     bcc     .waitCh0            ;2/3 = 2/3
 ;create waveform from table
-;assumes 1st bit of waveform alwaws set
+;assumes 1st bit of waveform always set
 ;--------------------------------------------------
   !if 0 { ;{
 Mask0   = *+1
@@ -377,16 +377,16 @@ Vol0    = *+1
 ; 32 bytes
 ContinueCh0
 ;---------------------------------------
-Sum1L   = *+1
+.sum1L  = *+1
     lda     #0                  ;2
 Freq1L  = *+1
     adc     #0                  ;2           CF==1!
-    sta     Sum1L               ;3
-Sum1H   = *+1
+    sta     .sum1L              ;3
+.sum1H  = *+1
     lda     #0                  ;2
 Freq1H  = *+1
     adc     #0                  ;2
-    sta     Sum1H               ;3   = 14
+    sta     .sum1H              ;3   = 14
 
     bcc     .waitCh1            ;2/3 =  2/3
 Mask1   = *+1
