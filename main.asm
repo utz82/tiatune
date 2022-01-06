@@ -27,9 +27,9 @@
 NTSC    = 1
 ;PAL     = !NTSC ;TODO
 
-; define which waveforms should be excluded
-NO_POLY9    = 0
-NO_POLY4_5  = 0 ;TODO
+;Define which waveforms should be excluded
+;NO_POLY9
+;NO_POLY4_5 ;TODO
 
         !to "tiatune.bin", plain
         !sl "tiatune.sym"
