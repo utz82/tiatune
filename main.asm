@@ -28,8 +28,9 @@
 ;4     7,9        c-0..gis-4    poly5  div31
 ;5     3 (TODO)
 
-NTSC    = 1
-;PAL     = !NTSC ;TODO
+;Assembler switches
+NTSC    = 1 ; else PAL (TODO)
+VISUALS = 1 ; add some visuals (from channel 0 only) (+75 bytes)
 
 ;Define which waveforms should be excluded
 ;NO_POLY9
@@ -273,8 +274,10 @@ PlayerCode = *
     bne     PlayNote            ;3/2 =  8/7
     jmp     ReadPtn             ;3
 ;---------------------------------------
+  !ifndef VISUALS {
 .waitCh0                        ;3
     jmp     WaitCh0             ;24  = 27
+  }
 
 .resetIdx1                      ;11          assumes 1st bit set
 Reset1  = *+1
@@ -300,11 +303,11 @@ PlayNote
 Freq0L  = *+1
     adc     #0                  ;2           CF==0!
     sta     .sum0L              ;3
-.sum0H  = *+1
+Sum0H  = *+1
     lda     #0                  ;2
 Freq0H  = *+1
     adc     #0                  ;2
-    sta     .sum0H              ;3   = 14
+    sta     Sum0H               ;3   = 14
 
     bcs     .waitCh0            ;2/3 = 2/3
 ;create waveform from table
@@ -347,11 +350,11 @@ ContinueCh0
 Freq1L  = *+1
     adc     #0                  ;2           CF==0!
     sta     .sum1L              ;3
-.sum1H  = *+1
+Sum1H  = *+1
     lda     #0                  ;2
 Freq1H  = *+1
     adc     #0                  ;2
-    sta     .sum1H              ;3   = 14
+    sta     Sum1H               ;3   = 14
 
     bcs     .waitCh1            ;2/3 =  2/3
 Mask1   = *+1
@@ -373,24 +376,48 @@ Pattern1 = *+1
 
 .waitCh1                        ;3
     jmp     WaitCh1             ;24  = 27
+
+  !ifdef VISUALS {
+.waitCh0
+    txs                         ;2
+    lda+1   Sum0H               ;3
+    lsr                         ;2
+    lsr                         ;2
+    tax                         ;2
+    lda     WaveGfx,x           ;4
+    sta+2   PF2                 ;4
+    tsx                         ;2
+;Note: carry is random
+    bpl     ContinueCh0         ;3   = 24
+  }
 }
 PlayerLength = * - PlayerCode
 
-WaitCh0                         ;3
-    brk                         ;16
-    nop                         ;-          skipped
+  !ifdef VISUALS {
+WaitCh1                         ;3
+    lda+1   Freq0H              ;3
+    sta     COLUPF              ;3
+    lda     #1                  ;2
+    sta+2   CTRLPF              ;4
+    nop                         ;2
+    nop                         ;2
     clc                         ;2
+    jmp     ContinueCh1         ;3   = 24
+  } else {
+WaitCh0                         ;3
+    jsr     Wait18              ;18
     jmp     ContinueCh0         ;3   = 24
 
 WaitCh1                         ;3
-    brk                         ;16
-    nop                         ;-          skipped
-    clc                         ;2
+    jsr     Wait18              ;18
     jmp     ContinueCh1         ;3   = 24
 
-Wait16                          ;7
-    bit     0                   ;3
-    rti                         ;6   = 16
+Wait18                          ;6
+    nop                         ;2
+    nop                         ;2
+    clc                         ;2
+    rts                         ;6   = 18
+  }
 
   !if NTSC { ; {
 ;$10000 - Frequency * 256 * 256 / (1193181.67 / (89 + 8/256)) * div (div = 2, 15, 31)
@@ -444,6 +471,19 @@ FreqDiv31Msb
     !byte   $65, $5B, $52, $47, $3C, $31, $24, $17, $0A                ;c-4..gis-4
   } ;} NTSC
 
+  !ifdef VISUALS {
+WaveGfx
+    !fill   7, %00000000
+    !fill   7, %10000000
+    !fill   7, %11000000
+    !fill   7, %01100000
+    !fill   8, %00110000
+    !fill   7, %00011000
+    !fill   7, %00001100
+    !fill   7, %00000110
+    !fill   7, %00000011
+  }
+
     !zone debug
     !warn * - $f000, " bytes used"
 
@@ -454,6 +494,6 @@ musicData
     * = $fffc
 
     !word   Reset          ; RESET
-    !word   Wait16         ; IRQ
+    !word   $0000          ; IRQ
 
 ;       END
