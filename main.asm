@@ -17,9 +17,9 @@
 ;improved by Thomas Jentzsch 01'2021
 
 ;wave  AUDCx      range         type
-;0     4,5,C,D    c-0..g-8      square div2
-;1     8          c-0..g-8      poly9  div2
-;2     1          c-0..gis-5    poly4  div15
+;0     4,5,C,D    c-0..gis-8    square div2
+;1     8          c-0..gis-8    poly9  div2
+;2     1          c-0..a-5      poly4  div15
 ;3     6,A        c-0..gis-4    r1813  div31
 ;4     7,9        c-0..gis-4    poly5  div31
 ;5     3 (TODO)
@@ -257,7 +257,7 @@ ReadPtn
 
     ldx     saveX
     ldy     saveY
-;    sec
+;    clc
     jmp     PlayNote
 
 PlayerCode = *
@@ -270,15 +270,15 @@ PlayerCode = *
     jmp     ReadPtn             ;3
 ;---------------------------------------
 .waitCh0                        ;3
-    jmp     WaitCh0             ;25  = 28
+    jmp     WaitCh0             ;24  = 27
 
-.resetIdx1                      ;12          assumes 1st bit set
+.resetIdx1                      ;11          assumes 1st bit set
 Reset1  = *+1
-    ldy     #3                  ;2           0,1,3,63,57
+    ldy     #3                  ;2   = 13    0,1,3,63(,57)
 Init1   = *
     asl                         ;2           or NOP (square,poly4->5)
     sta+1   Mask1               ;3
-    sec                         ;2   (= 14 = 21-7)
+    nop                         ;2
 .loadV1
 Vol1    = *+1
     lda     #0                  ;2
@@ -288,7 +288,7 @@ ContinueCh1
 
     dec     rowLenL             ;5          always loops 256 times here
     beq     .loopH              ;2/3 =  7/8
-                                ;           avg 91 cycles (was 114)
+                                ;           avg 89 cycles (was 114)
 ;---------------------------------------
 PlayNote
 .sum0L  = *+1
@@ -302,17 +302,16 @@ Freq0H  = *+1
     adc     #0                  ;2
     sta     .sum0H              ;3   = 14
 
-    bcc     .waitCh0            ;2/3 = 2/3
+    bcs     .waitCh0            ;2/3 = 2/3
 ;create waveform from table
 ;assumes 1st bit of waveform always set
-;--------------------------------------------------
-  !if 0 { ;{
 Mask0   = *+1
     lda     #1                  ;2
     bpl     .contMask0          ;2/3
     lda     #$01                ;2
     dex                         ;2
     bmi     .resetIdx0          ;2/3
+.cont0
     sta+1   Mask0               ;3   = 13
 Pattern0 = *+1
     and     PatternTbl,x        ;4
@@ -321,60 +320,22 @@ Pattern0 = *+1
 
 .contMask0                      ;5
     asl                         ;2
-    sec                         ;2
-    sta+2   Mask0               ;4   = 13
-    and     PatternTbl,x        ;4
-    bne     .loadV0             ;2/3
-    beq     .zeroV0             ;3
+    bcc     .cont0              ;3
 
 .resetIdx0                      ;11          assumes 1st bit set
 Reset0  = *+1
-    ldx     #3                  ;2           0,1,3,63(,57)
+    ldx     #3                  ;2   = 13    0,1,3,63(,57)
 Init0   = *
     asl                         ;2           or NOP (square,poly4->5)
 ;    lda     #$02                ;2           or $01 (square,poly4->5)
     sta+1   Mask0               ;3
-    sec                         ;2   (= 14 = 21-7)
+    nop                         ;2
 .loadV0
 Vol0    = *+1
     lda     #0                  ;2
 .zeroV0
     sta     AUDV0               ;3   = 12
-; 40 bytes
-  } ;}
-;--------------------------------------------------
-Mask0   = *+1
-    lda     #0                  ;2
-    bmi     .nextMask0          ;2/3
-    asl                         ;2
-    sec                         ;2
-    bne     .cont0              ;3
-
-.nextMask0                      ;5
-    lda     #$01                ;2
-    dex                         ;2
-    bmi     .resetIdx0          ;2/3
-.cont0
-    sta+1   Mask0               ;3   = 14
-Pattern0 = *+1
-    and     PatternTbl,x        ;4
-    bne     .loadV0             ;2/3
-    beq     .zeroV0             ;3
-
-.resetIdx0                      ;12          assumes 1st bit set
-Reset0  = *+1
-    ldx     #3                  ;2           0,1,3,63(,57)
-Init0   = *
-    asl                         ;2           or NOP (square,poly4->5)
-;    lda     #$02                ;2           or $01 (square,poly4->5)
-    sta+1   Mask0               ;3
-    sec                         ;2   (= 14 = 21-7)
-.loadV0
-Vol0    = *+1
-    lda     #0                  ;2
-.zeroV0
-    sta     AUDV0               ;3   = 12
-; 32 bytes
+; 31 bytes
 ContinueCh0
 ;---------------------------------------
 .sum1L  = *+1
@@ -388,96 +349,97 @@ Freq1H  = *+1
     adc     #0                  ;2
     sta     .sum1H              ;3   = 14
 
-    bcc     .waitCh1            ;2/3 =  2/3
+    bcs     .waitCh1            ;2/3 =  2/3
 Mask1   = *+1
-    lda     #0                  ;2
-    bmi     .nextMask1          ;2/3
-    asl                         ;2
-    sec                         ;2
-    bne     .cont1              ;3
-
-.nextMask1                      ;5
+    lda     #1                  ;2
+    bpl     .contMask1          ;2/3
     lda     #$01                ;2
     dey                         ;2
     bmi     .resetIdx1          ;2/3
 .cont1
-    sta+1   Mask1               ;3   = 14
+    sta+1   Mask1               ;3   = 13
 Pattern1 = *+1
     and     PatternTbl,y        ;4
     bne     .loadV1             ;2/3
     beq     .zeroV1             ;3
 
+.contMask1                      ;5
+    asl                         ;2
+    bcc     .cont1              ;3
+
 .waitCh1                        ;3
-    jmp     WaitCh1             ;25  = 28
+    jmp     WaitCh1             ;24  = 27
 }
 PlayerLength = * - PlayerCode
 
 WaitCh0                         ;3
-    jsr     Wait19              ;19
-    jmp     ContinueCh0         ;3   = 25
+    jsr     Wait18              ;18
+    jmp     ContinueCh0         ;3   = 24
 
 WaitCh1                         ;3
-    jsr     Wait19              ;19
-    jmp     ContinueCh1         ;3   = 25
+    jsr     Wait18              ;18
+    jmp     ContinueCh1         ;3   = 24
 
-Wait19                          ;6
-    asl    $2e                  ;5
-    sec                         ;2
-    rts                         ;6   = 19
+Wait18                          ;6
+    nop                         ;2
+    nop                         ;2
+    clc                         ;2
+    rts                         ;6   = 18
 
   !if NTSC { ; {
+;$10000 - Frequency * 256 * 256 / (1193181.67 / (89 + 8/256)) * div (div = 2, 15, 31)
 FreqDiv2Lsb
-    !byte   $A2, $AC, $B6, $C1, $CC, $D9, $E6, $F3, $02, $11, $22, $33 ;c-0..b-0
-    !byte   $45, $59, $6E, $83, $9A, $B3, $CD, $E8, $06, $24, $45, $68 ;c-1..b-1
-    !byte   $8D, $B3, $DD, $08, $37, $68, $9B, $D2, $0D, $4A, $8C, $D1 ;c-2..b-2
-    !byte   $1B, $68, $BB, $12, $6F, $D1, $38, $A6, $1B, $96, $19, $A4 ;c-3..b-3
-    !byte   $37, $D2, $77, $26, $DF, $A3, $72, $4E, $37, $2E, $34, $49 ;c-4..b-4
-    !byte   $6F, $A6, $F0, $4D, $BF, $47, $E6, $9E, $70, $5E, $6A, $94 ;c-5..b-5
-    !byte   $DF, $4E, $E1, $9B, $7F, $8F, $CE, $3E, $E2, $BE, $D5, $2A ;c-6..b-6
-    !byte   $C0, $9D, $C3, $38, $00, $20, $9E, $7E, $C6, $7E, $AB, $55 ;c-7..b-7
-    !byte   $82, $3B, $88, $72, $02, $42, $3D, $FD                     ;c-8..g-8
+    !byte   $60, $56, $4C, $41, $36, $2A, $1D, $10, $02, $F3, $E3, $D2 ;c-0..b-0
+    !byte   $C0, $AD, $98, $83, $6D, $55, $3B, $20, $04, $E6, $C6, $A4 ;c-1..b-1
+    !byte   $80, $5A, $31, $07, $DA, $AA, $77, $41, $08, $CC, $8C, $48 ;c-2..b-2
+    !byte   $00, $B4, $63, $0E, $B4, $54, $EE, $83, $11, $98, $18, $90 ;c-3..b-3
+    !byte   $01, $69, $C7, $1D, $68, $A8, $DD, $06, $22, $30, $30, $21 ;c-4..b-4
+    !byte   $02, $D2, $8F, $3A, $D0, $50, $BA, $0C, $44, $61, $61, $43 ;c-5..b-5
+    !byte   $05, $A4, $1F, $74, $A0, $A2, $75, $18, $89, $C2, $C3, $87 ;c-6..b-6
+    !byte   $0A, $48, $3F, $E8, $41, $43, $EB, $31, $12, $85, $86, $0D ;c-7..b-7
+    !byte   $14, $91, $7E, $D2, $83, $87, $D6, $63, $24                ;c-8..gis-8
 FreqDiv2Msb
-    !byte   $00, $00, $00, $00, $00, $00, $00, $00, $01, $01, $01, $01 ;c-0..b-0
-    !byte   $01, $01, $01, $01, $01, $01, $01, $01, $02, $02, $02, $02 ;c-1..b-1
-    !byte   $02, $02, $02, $03, $03, $03, $03, $03, $04, $04, $04, $04 ;c-2..b-2
-    !byte   $05, $05, $05, $06, $06, $06, $07, $07, $08, $08, $09, $09 ;c-3..b-3
-    !byte   $0A, $0A, $0B, $0C, $0C, $0D, $0E, $0F, $10, $11, $12, $13 ;c-4..b-4
-    !byte   $14, $15, $16, $18, $19, $1B, $1C, $1E, $20, $22, $24, $26 ;c-5..b-5
-    !byte   $28, $2B, $2D, $30, $33, $36, $39, $3D, $40, $44, $48, $4D ;c-6..b-6
-    !byte   $51, $56, $5B, $61, $67, $6D, $73, $7A, $81, $89, $91, $9A ;c-7..b-7
-    !byte   $A3, $AD, $B7, $C2, $CE, $DA, $E7, $F4                     ;c-8..g-8
+    !byte   $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FE, $FE, $FE ;c-0..b-0
+    !byte   $FE, $FE, $FE, $FE, $FE, $FE, $FE, $FE, $FE, $FD, $FD, $FD ;c-1..b-1
+    !byte   $FD, $FD, $FD, $FD, $FC, $FC, $FC, $FC, $FC, $FB, $FB, $FB ;c-2..b-2
+    !byte   $FB, $FA, $FA, $FA, $F9, $F9, $F8, $F8, $F8, $F7, $F7, $F6 ;c-3..b-3
+    !byte   $F6, $F5, $F4, $F4, $F3, $F2, $F1, $F1, $F0, $EF, $EE, $ED ;c-4..b-4
+    !byte   $EC, $EA, $E9, $E8, $E6, $E5, $E3, $E2, $E0, $DE, $DC, $DA ;c-5..b-5
+    !byte   $D8, $D5, $D3, $D0, $CD, $CA, $C7, $C4, $C0, $BC, $B8, $B4 ;c-6..b-6
+    !byte   $B0, $AB, $A6, $A0, $9B, $95, $8E, $88, $81, $79, $71, $69 ;c-7..b-7
+    !byte   $60, $56, $4C, $41, $36, $2A, $1D, $10, $02                ;c-8..gis-8
 
 FreqDiv15Lsb
-    !byte   $C9, $11, $5F, $B1, $07, $64, $C4, $2C, $99, $0D, $88, $0A ;c-0..b-0
-    !byte   $93, $25, $C0, $63, $10, $C8, $8B, $59, $34, $1B, $11, $15 ;c-1..b-1
-    !byte   $28, $4C, $81, $C8, $23, $93, $18, $B4, $6A, $38, $23, $2B ;c-2..b-2
-    !byte   $51, $99, $03, $91, $47, $26, $31, $6A, $D4, $72, $47, $57 ;c-3..b-3
-    !byte   $A4, $33, $07, $25, $90, $4E, $63, $D6, $AA, $E6, $90, $AF ;c-4..b-4
-    !byte   $4A, $68, $10, $4B, $22, $9E, $C9, $AD, $55                ;c-5..gis-5
+    !byte   $50, $09, $BE, $6D, $18, $BE, $60, $FA, $8F, $1E, $A6, $27 ;c-0..b-0
+    !byte   $A1, $12, $7B, $DB, $31, $7E, $BF, $F5, $20, $3D, $4D, $4F ;c-1..b-1
+    !byte   $42, $24, $F6, $B6, $63, $FB, $7F, $EB, $3F, $7B, $9B, $9F ;c-2..b-2
+    !byte   $84, $4A, $ED, $6D, $C6, $F8, $FE, $D7, $80, $F6, $37, $3E ;c-3..b-3
+    !byte   $09, $94, $DB, $DA, $8D, $EF, $FC, $AE, $01, $ED, $6E, $7D ;c-4..b-4
+    !byte   $12, $28, $B6, $B5, $1B, $DF, $F8, $5D, $01, $DA           ;c-5..a-5
 FreqDiv15Msb
-    !byte   $04, $05, $05, $05, $06, $06, $06, $07, $07, $08, $08, $09 ;c-0..b-0
-    !byte   $09, $0A, $0A, $0B, $0C, $0C, $0D, $0E, $0F, $10, $11, $12 ;c-1..b-1
-    !byte   $13, $14, $15, $16, $18, $19, $1B, $1C, $1E, $20, $22, $24 ;c-2..b-2
-    !byte   $26, $28, $2B, $2D, $30, $33, $36, $39, $3C, $40, $44, $48 ;c-3..b-3
-    !byte   $4C, $51, $56, $5B, $60, $66, $6C, $72, $79, $80, $88, $90 ;c-4..b-4
-    !byte   $99, $A2, $AC, $B6, $C1, $CC, $D8, $E5, $F3                ;c-5..gis-5
+    !byte   $FB, $FB, $FA, $FA, $FA, $F9, $F9, $F8, $F8, $F8, $F7, $F7 ;c-0..b-0
+    !byte   $F6, $F6, $F5, $F4, $F4, $F3, $F2, $F1, $F1, $F0, $EF, $EE ;c-1..b-1
+    !byte   $ED, $EC, $EA, $E9, $E8, $E6, $E5, $E3, $E2, $E0, $DE, $DC ;c-2..b-2
+    !byte   $DA, $D8, $D5, $D3, $D0, $CD, $CA, $C7, $C4, $C0, $BD, $B9 ;c-3..b-3
+    !byte   $B5, $B0, $AB, $A6, $A1, $9B, $95, $8F, $89, $81, $7A, $72 ;c-4..b-4
+    !byte   $6A, $61, $57, $4D, $43, $37, $2B, $1F, $12, $03           ;c-5..a-5
 
 FreqDiv31Lsb
-    !byte   $E5, $7B, $1B, $C5, $77, $36, $FE, $D4, $B6, $A5, $A3, $AF ;c-0..b-0
-    !byte   $CB, $F9, $38, $8A, $F0, $6C, $FF, $A9, $6C, $4B, $46, $60 ;c-1..b-1
-    !byte   $99, $F4, $72, $16, $E4, $DB, $00, $54, $DC, $98, $8E, $C0 ;c-2..b-2
-    !byte   $32, $E8, $E5, $2E, $C8, $B7, $01, $AA, $B8, $32, $1D, $82 ;c-3..b-3
-    !byte   $67, $D1, $CB, $5F, $92, $70, $02, $56, $71                ;c-4..gis-4
+    !byte   $51, $BE, $22, $7B, $CD, $12, $4F, $7D, $A0, $B7, $BE, $B8 ;c-0..b-0
+    !byte   $A2, $7B, $43, $F8, $9A, $26, $9C, $FB, $42, $6E, $7E, $70 ;c-1..b-1
+    !byte   $44, $F6, $86, $F1, $33, $4C, $39, $F7, $84, $DC, $FD, $E2 ;c-2..b-2
+    !byte   $8A, $EE, $0D, $E2, $68, $9A, $73, $EF, $09, $B9, $FA, $C5 ;c-3..b-3
+    !byte   $12, $DD, $1B, $C3, $CE, $33, $E8, $DF, $13                ;c-4..gis-4
 FreqDiv31Msb
-    !byte   $09, $0A, $0B, $0B, $0C, $0D, $0D, $0E, $0F, $10, $11, $12 ;c-0..b-0
-    !byte   $13, $14, $16, $17, $18, $1A, $1B, $1D, $1F, $21, $23, $25 ;c-1..b-1
-    !byte   $27, $29, $2C, $2F, $31, $34, $38, $3B, $3E, $42, $46, $4A ;c-2..b-2
-    !byte   $4F, $53, $58, $5E, $63, $69, $70, $76, $7D, $85, $8D, $95 ;c-3..b-3
-    !byte   $9E, $A7, $B1, $BC, $C7, $D3, $E0, $ED, $FB                ;c-4..gis-4
+    !byte   $F6, $F5, $F5, $F4, $F3, $F3, $F2, $F1, $F0, $EF, $EE, $ED ;c-0..b-0
+    !byte   $EC, $EB, $EA, $E8, $E7, $E6, $E4, $E2, $E1, $DF, $DD, $DB ;c-1..b-1
+    !byte   $D9, $D6, $D4, $D1, $CF, $CC, $C9, $C5, $C2, $BE, $BA, $B6 ;c-2..b-2
+    !byte   $B2, $AD, $A9, $A3, $9E, $98, $92, $8B, $85, $7D, $75, $6D ;c-3..b-3
+    !byte   $65, $5B, $52, $47, $3C, $31, $24, $17, $0A                ;c-4..gis-4
   } ;} NTSC
 
     !zone debug
-    !warn * - $f000, " bytes free"
+    !warn * - $f000, " bytes used"
 
     !zone musicdata
 musicData
