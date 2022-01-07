@@ -1,3 +1,8 @@
+;TIAtune
+;Atari 2600 music player
+;by utz 10'2017 * irrlichtproject.de
+;improved by Thomas Jentzsch 01'2021
+
 ; Ideas:
 ; + get rid of initial CLC
 ; + keep variables in X/Y
@@ -5,16 +10,15 @@
 ; + precalulate waveforms
 ;   - poly4_5
 ; - rowLen via TIMxxT
+; - variable tempo (using fractional math here too)
+; - use wait cycles (e.g. prepare next loop)
 
 ; TODOs:
 ; + adapt FreqDiv tables to faster loop
 ; - adapt tone lengths to faster loop
 ; + sounds rough, maybe preserve X/Y between notes
 
-;TIAtune
-;Atari 2600 music player
-;by utz 10'2017 * irrlichtproject.de
-;improved by Thomas Jentzsch 01'2021
+; Legend: + done, o partially done, - todo, x canceled
 
 ;wave  AUDCx      range         type
 ;0     4,5,C,D    c-0..gis-8    square div2
@@ -294,7 +298,7 @@ PlayNote
 .sum0L  = *+1
     lda     #0                  ;2
 Freq0L  = *+1
-    adc     #0                  ;2           CF==1!
+    adc     #0                  ;2           CF==0!
     sta     .sum0L              ;3
 .sum0H  = *+1
     lda     #0                  ;2
@@ -341,7 +345,7 @@ ContinueCh0
 .sum1L  = *+1
     lda     #0                  ;2
 Freq1L  = *+1
-    adc     #0                  ;2           CF==1!
+    adc     #0                  ;2           CF==0!
     sta     .sum1L              ;3
 .sum1H  = *+1
     lda     #0                  ;2
@@ -373,18 +377,20 @@ Pattern1 = *+1
 PlayerLength = * - PlayerCode
 
 WaitCh0                         ;3
-    jsr     Wait18              ;18
+    brk                         ;16
+    nop                         ;-          skipped
+    clc                         ;2
     jmp     ContinueCh0         ;3   = 24
 
 WaitCh1                         ;3
-    jsr     Wait18              ;18
+    brk                         ;16
+    nop                         ;-          skipped
+    clc                         ;2
     jmp     ContinueCh1         ;3   = 24
 
-Wait18                          ;6
-    nop                         ;2
-    nop                         ;2
-    clc                         ;2
-    rts                         ;6   = 18
+Wait16                          ;7
+    bit     0                   ;3
+    rti                         ;6   = 16
 
   !if NTSC { ; {
 ;$10000 - Frequency * 256 * 256 / (1193181.67 / (89 + 8/256)) * div (div = 2, 15, 31)
@@ -448,6 +454,6 @@ musicData
     * = $fffc
 
     !word   Reset          ; RESET
-    !word   Reset          ; IRQ
+    !word   Wait16         ; IRQ
 
 ;       END

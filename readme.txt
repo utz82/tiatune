@@ -33,7 +33,7 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (904, was 1147 bytes)
+- fairly large player (903, was 1147 bytes)
 - no support for AUDC waveforms 2, 3, E (yet)
 
 
@@ -54,7 +54,7 @@ The following limitations apply:
 - Any changes to instruments/samples are ignored.
 - Changes to BPM are ignored.
 - FX commands are ignored, except for Fxx (change tempo, xx < 0x20)
-- The range of instrument 3 is limited to C-0..Gis-5, and the range of instruments
+- The range of instrument 3 is limited to C-0..A-5, and the range of instruments
   4 and 5 is limited to C-0..Gis-4.
 
 Pattern length is also limited. The actual limit depends on the converted data
