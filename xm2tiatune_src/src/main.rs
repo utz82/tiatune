@@ -8,7 +8,6 @@ use std::str;
 use std::path::Path;
 use std::fs::File;
 use std::io::prelude::*;
-use std::error::Error;
 
 //grab version number from Cargo.toml
 const PRGM_VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -22,7 +21,7 @@ fn main() {
     };
 
     let xm = match xmkit::XModule::parse_file(&Path::new(&filename)) {
-        Err(e) => panic!("{}", e.description()),
+        Err(e) => panic!("{}", e.to_string()),
         Ok(xm) => xm,
     };
 
