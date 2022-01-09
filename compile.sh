@@ -3,10 +3,10 @@
 ./xm2tiatune
 if [ "$?" = "0" ]
 then
-  ./acme main.asm
+  acme main.asm
   if [ "$?" = "0" ]
   then 
-    stella test.bin
+    stella tiatune.bin
   fi
 fi
-#stella -debug test.bin
+#stella -debug tiatune.bin
