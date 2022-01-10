@@ -126,8 +126,8 @@ AUDCx equivalents of the waveform parameter, and their note ranges are as
 follows:
 
 wave  AUDCx      range
-0     4,5,C,D    c-0..gis8
-1     8          c-0..gis8
+0     4,5,C,D    c-0..g8
+1     8          c-0..g8
 2     1          c-0..a-5
 3     6,A        c-0..gis4
 4     7,9        c-0..gis4

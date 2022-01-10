@@ -47,6 +47,7 @@ HZ      = 1182298
 }
 TDIV    = BPM * TPB * 1024
 TEMPO   = (HZ * 60 + TDIV / 2) / TDIV ; * 1024 = shortest note length
+VISUALS = 1 ; add some visuals (both channels) (+40 bytes)
 } else {
 ; only allowed without timer!
 VISUALS = 1 ; add some visuals (from channel 0 only) (+75 bytes)
@@ -230,6 +231,27 @@ Reset
     dex
     bpl     -
 
+!ifdef TIMER {
+ !ifdef VISUALS {
+    ldx     #6
+.wait
+    dex
+    bpl     .wait
+    sta     RESP0
+    stx     NUSIZ0
+    stx     NUSIZ1
+    lda     #$28
+    sta     RESP1
+    stx     CTRLPF
+    sta     REFP0
+    sta     HMP1
+    lsr
+    sta     HMP0
+    sta     WSYNC
+    sta     HMOVE
+ }
+}
+
 .readSeq                        ;read next entry in sequence
     ldy     seqOffs
     lda     sequence_hi,y
@@ -371,7 +393,8 @@ PlayerCode = *
     jmp     ReadPtn             ;3
 ;---------------------------------------
 .waitCh0                        ;3
-!ifdef VISUALS {
+!ifndef TIMER {
+ !ifdef VISUALS {
     txs                         ;2
     lda+1   Sum0H               ;3
     lsr                         ;2
@@ -382,9 +405,12 @@ PlayerCode = *
     tsx                         ;2
 ;Note: carry is random
     bpl     ContinueCh0         ;3   = 27
-} else { ;{
+ } else { ;{
     jmp     WaitCh0             ;24  = 27
-} ;}
+ } ;}
+} else {
+    jmp     WaitCh0             ;24  = 27
+}
 
 .resetIdx1                      ;11          assumes 1st bit set
 Reset1  = *+1
@@ -491,7 +517,9 @@ Pattern1 = *+1
 }
 PlayerLength = * - PlayerCode
 
+
 !ifdef VISUALS {
+ !ifndef TIMER {
 WaitCh1                         ;3
     lda+1   Freq0H              ;3
     sta     COLUPF              ;3
@@ -501,6 +529,27 @@ WaitCh1                         ;3
     nop                         ;2
     clc                         ;2
     jmp     ContinueCh1         ;3   = 24
+ } else { ; {
+WaitCh0                         ;3
+    lda+1   Mask0               ;3
+    sta     GRP0                ;3
+    lda+1   Mask1               ;3
+    sta     GRP1                ;3
+    nop                         ;2
+    nop                         ;2
+    clc                         ;2
+    jmp     ContinueCh0         ;3   = 24
+
+WaitCh1                         ;3
+    lda+1   Freq0H              ;3
+    sta     COLUP0              ;3
+    lda+1   Freq1H              ;3
+    sta     COLUP1              ;3
+    nop                         ;2
+    nop                         ;2
+    clc                         ;2
+    jmp     ContinueCh1         ;3   = 24
+ }
 } else { ;{
 WaitCh0                         ;3
     jsr     Wait18              ;18
@@ -528,7 +577,7 @@ FreqDiv2Msb = * - 1
     !h  EC EA E9 E8 E6 E5 E3 E2 E0 DE DC DA ;c-5..b-5
     !h  D8 D5 D3 D0 CD CA C7 C4 C0 BC B8 B4 ;c-6..b-6
     !h  B0 AB A6 A0 9B 95 8E 88 81 79 71 69 ;c-7..b-7
-    !h  60 56 4C 41 36 2A 1D 10 02          ;c-8..gis-8
+    !h  60 56 4C 41 36 2A 1D 10             ;c-8..g-8
 FreqDiv2Lsb = * - 1
     !h  60 56 4C 41 36 2A 1D 10 02 F3 E3 D2 ;c-0..b-0
     !h  C0 AD 98 83 6D 55 3B 20 04 E6 C6 A4 ;c-1..b-1
@@ -538,7 +587,7 @@ FreqDiv2Lsb = * - 1
     !h  02 D2 8F 3A D0 50 BA 0C 44 61 61 43 ;c-5..b-5
     !h  05 A4 1F 74 A0 A2 75 18 89 C2 C3 87 ;c-6..b-6
     !h  0A 48 3F E8 41 43 EB 31 12 85 86 0D ;c-7..b-7
-    !h  14 91 7E D2 83 87 D6 63 24          ;c-8..gis-8
+    !h  14 91 7E D2 83 87 D6 63             ;c-8..g-8
 
 FreqDiv15Msb
     !h  FB FB FA FA FA F9 F9 F8 F8 F8 F7 F7 ;c-0..b-0
@@ -580,7 +629,7 @@ FreqDiv2Msb = * - 1
     !h  EB EA E9 E8 E6 E5 E3 E1 DF DE DC D9 ;c-5..b-5
     !h  D7 D5 D2 D0 CD CA C6 C3 BF BC B8 B3 ;c-6..b-6
     !h  AF AA A5 A0 9A 94 8D 87 7F 78 70 67 ;c-7..b-7
-    !h  5E 55 4A 40 34 28 1B 0E 00          ;c-8..gis-8
+    !h  5E 55 4A 40 34 28 1B 0E             ;c-8..g-8
 FreqDiv2Lsb = * - 1
     !h  5E 55 4A 40 34 28 1B 0E FF F0 E0 CF ;c-0..b-0
     !h  BD A9 95 80 69 51 37 1C FF E1 C0 9E ;c-1..b-1
@@ -590,7 +639,7 @@ FreqDiv2Lsb = * - 1
     !h  D3 A0 5A 02 95 12 78 C5 F9 12 0D EA ;c-5..b-5
     !h  A6 40 B5 04 2A 24 F0 8B F3 24 1B D5 ;c-6..b-6
     !h  4D 81 6B 08 54 48 E0 17 E6 48 37 AA ;c-7..b-7
-    !h  9B 02 D7 11 A8 90 C1 2E CD          ;c-8..gis-8
+    !h  9B 02 D7 11 A8 90 C1 2E             ;c-8..g-8
 
 FreqDiv15Msb = * - 1
     !h  FB FA FA FA FA F9 F9 F8 F8 F8 F7 F7 ;c-0..b-0
@@ -622,6 +671,7 @@ FreqDiv31Lsb
 } ;} /PAL
 
 !ifdef VISUALS {
+ !ifndef TIMER {
 WaveGfx
     !fill   7, %00000000
     !fill   7, %10000000
@@ -632,6 +682,7 @@ WaveGfx
     !fill   7, %00001100
     !fill   7, %00000110
     !fill   7, %00000011
+ }
 }
     !zone debug
 !ifndef USED {
