@@ -33,7 +33,7 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (903, was 1147 bytes)
+- fairly large player (904, was 1147 bytes)
 - no support for AUDC waveforms 2, 3, E (yet)
 
 
@@ -111,11 +111,11 @@ byte  bits   function
 1     0..5   tempo (step length)
       6      if set, skip updating channel 2
       7      if set, skip updating channel 1
-2     0..1   waveform channel 1 (0..4)
-      2..5   volume ch1
+2     0..2   waveform channel 1 (0..4)
+      3..6   volume ch1
 3     0..7   note ch1
-4     0..1   waveform ch2 (0..4)
-      2..5   volume ch2
+4     0..2   waveform ch2 (0..4)
+      3..6   volume ch2
 5     0..8   note ch2
 
 If bit 7 of byte 1 is set, byte 2 and 3 are omitted. Likewise, if bit 6 of byte
