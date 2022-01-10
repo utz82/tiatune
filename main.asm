@@ -34,23 +34,23 @@
 ;6     2                        poly4   r1813
 
 ;Assembler switches
-NTSC    = 0 ; else PAL
+NTSC    = 1 ; else use PAL frequencies
+TIMER   = 1 ; use T1024T and variable speed
 
-TIMER   = 1     ; use T1024T and variable speed
-!ifdef TIMER {
+!if TIMER {
+VISUALS = 1     ; add some visuals (both channels) (+28 bytes)
 BPM     = 155   ; should be defined in music.asm
 TPB     = 16    ; should be defined in music.asm
-!if NTSC {
+; calculate TEMPO (do not change!)
+ !if NTSC {
 HZ      = 1193182
-} else {
+ } else {
 HZ      = 1182298
-}
+ }
 TDIV    = BPM * TPB * 1024
 TEMPO   = (HZ * 60 + TDIV / 2) / TDIV ; * 1024 = shortest note length
-VISUALS = 1 ; add some visuals (both channels) (+40 bytes)
 } else {
-; only allowed without timer!
-VISUALS = 1 ; add some visuals (from channel 0 only) (+75 bytes)
+VISUALS = 1     ; add some visuals (from channel 0 only) (+75 bytes)
 }
 
 ;Define which waveforms should be excluded
@@ -74,7 +74,7 @@ seqOffs     !byte 0     ;seqence offset
 ptnOffs     !byte 0
 ptnPtrL     !byte 0     ;temporary
 ptnPtrH     !byte 0     ;temporary
-!ifndef TIMER {
+!if TIMER = 0 {
 rowLenL     !byte 0
 }
 rowLenH     !byte 0
@@ -223,6 +223,19 @@ Reset
     pha
     bne     -
 
+!if TIMER & VISUALS {
+    dex
+    nop
+    nop
+    nop
+    stx     CTRLPF
+    sta     RESP0
+    stx     NUSIZ0
+    stx     NUSIZ1
+    stx     REFP0
+    sta     RESP1
+}
+
 ;relocate player to zeropage
     ldx     #PlayerLength - 1
 -
@@ -230,27 +243,6 @@ Reset
     sta     VAR_END,x
     dex
     bpl     -
-
-!ifdef TIMER {
- !ifdef VISUALS {
-    ldx     #6
-.wait
-    dex
-    bpl     .wait
-    sta     RESP0
-    stx     NUSIZ0
-    stx     NUSIZ1
-    lda     #$28
-    sta     RESP1
-    stx     CTRLPF
-    sta     REFP0
-    sta     HMP1
-    lsr
-    sta     HMP0
-    sta     WSYNC
-    sta     HMOVE
- }
-}
 
 .readSeq                        ;read next entry in sequence
     ldy     seqOffs
@@ -384,7 +376,7 @@ PlayerCode = *
 
     !pseudopc VAR_END {         ;actual player runs on zeropage
 .loopH                          ;8
-!ifdef TIMER {
+!if TIMER {
     lda     #TEMPO              ;2          define next tick length,
     sta     T1024T              ;4          constant, even if loop is exited
 }
@@ -393,8 +385,7 @@ PlayerCode = *
     jmp     ReadPtn             ;3
 ;---------------------------------------
 .waitCh0                        ;3
-!ifndef TIMER {
- !ifdef VISUALS {
+!if TIMER = 0 & VISUALS {
     txs                         ;2
     lda+1   Sum0H               ;3
     lsr                         ;2
@@ -405,9 +396,6 @@ PlayerCode = *
     tsx                         ;2
 ;Note: carry is random
     bpl     ContinueCh0         ;3   = 27
- } else { ;{
-    jmp     WaitCh0             ;24  = 27
- } ;}
 } else {
     jmp     WaitCh0             ;24  = 27
 }
@@ -426,7 +414,7 @@ Vol1    = *+1
     sta     AUDV1               ;3   = 12
 ContinueCh1
 
-!ifdef TIMER {
+!if TIMER {
     lda     TIMINT              ;4
     bmi     .loopH              ;2/3 =  6/7
                                 ;           avg 88 cycles (was 114)
@@ -518,8 +506,8 @@ Pattern1 = *+1
 PlayerLength = * - PlayerCode
 
 
-!ifdef VISUALS {
- !ifndef TIMER {
+!if VISUALS {
+ !if TIMER = 0 {
 WaitCh1                         ;3
     lda+1   Freq0H              ;3
     sta     COLUPF              ;3
@@ -670,8 +658,7 @@ FreqDiv31Lsb
     !h  A5 5A 81 10 02 4C E3 BC D0          ;c-4..gis-4
 } ;} /PAL
 
-!ifdef VISUALS {
- !ifndef TIMER {
+!if TIMER = 0 & VISUALS {
 WaveGfx
     !fill   7, %00000000
     !fill   7, %10000000
@@ -682,7 +669,6 @@ WaveGfx
     !fill   7, %00001100
     !fill   7, %00000110
     !fill   7, %00000011
- }
 }
     !zone debug
 !ifndef USED {
