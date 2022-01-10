@@ -1,15 +1,17 @@
 ********************************************************************************
-TIAtune v0.2.0
+TIAtune v0.3.0
 by utz 11'2017 * irrlichtproject.de
 updated by Thomas Jentzsch 01'2022
 ********************************************************************************
 
 Updates
 ================================================================================
-Optimized waveform generation code. This increased the sample rate from 10.4 to
-13.4 kHz. Since the new code uses tables, the missing waveforms can be easily
-added too. Also about 240 more bytes are free now for music.
-TODOs: The music lengths of the demo song have to be updated.
+- Optimized waveform generation code. This increased the sample rate from 10.4
+  to 13.5 kHz.
+- Since the new code uses tables, the missing waveforms can be easily added too.
+- Song tempo can be controlled now.
+- About 240 more bytes are free now for music.
+- Optional simple visuals
 
 
 ABOUT
@@ -33,8 +35,8 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (904, was 1147 bytes)
-- no support for AUDC waveforms 2, 3, E (yet)
+- fairly large player (910, was 1147 bytes)
+- no support for AUDC waveforms 2, 3 (yet)
 
 
 The TIAtune source is designed to be assembled with the ACME cross-assembler.
@@ -52,7 +54,7 @@ emulator installed. Then simply run compile.cmd (Windows) or compile.sh
 The following limitations apply:
 
 - Any changes to instruments/samples are ignored.
-- Changes to BPM are ignored.
+- Changes to BPM are ignored (TODO: fix this)
 - FX commands are ignored, except for Fxx (change tempo, xx < 0x20)
 - The range of instrument 3 is limited to C-0..A-5, and the range of instruments
   4 and 5 is limited to C-0..Gis-4.
@@ -126,11 +128,11 @@ AUDCx equivalents of the waveform parameter, and their note ranges are as
 follows:
 
 wave  AUDCx      range
-0     4,5,C,D    c-0..g8
-1     8          c-0..g8
+0     4,5,C,D    c-0..gis-8
+1     8          c-0..gis-8
 2     1          c-0..a-5
-3     6,A        c-0..gis4
-4     7,9        c-0..gis4
+3     6,A        c-0..gis-4
+4     7,9        c-0..gis-4
 
 The remaining AUDCx waveforms are not supported by TIAtune.
 

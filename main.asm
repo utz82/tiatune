@@ -34,24 +34,19 @@
 ;6     2                        poly4   r1813
 
 ;Assembler switches
-NTSC    = 1 ; else use PAL frequencies
-TIMER   = 1 ; use T1024T and variable speed
-
-!if TIMER {
-VISUALS = 1     ; add some visuals (both channels) (+28 bytes)
-BPM     = 155   ; should be defined in music.asm
+NTSC    = 0     ; else use PAL frequencies
+VISUALS = 0     ; add some visuals (both channels) (+28 bytes)
+BPM     = 150   ; should be defined in music.asm
 TPB     = 16    ; should be defined in music.asm
+
 ; calculate TEMPO (do not change!)
- !if NTSC {
+!if NTSC {
 HZ      = 1193182
- } else {
+} else {
 HZ      = 1182298
- }
+}
 TDIV    = BPM * TPB * 1024
 TEMPO   = (HZ * 60 + TDIV / 2) / TDIV ; * 1024 = shortest note length
-} else {
-VISUALS = 1     ; add some visuals (from channel 0 only) (+75 bytes)
-}
 
 ;Define which waveforms should be excluded
 ;NO_SQUARE
@@ -74,9 +69,6 @@ seqOffs     !byte 0     ;seqence offset
 ptnOffs     !byte 0
 ptnPtrL     !byte 0     ;temporary
 ptnPtrH     !byte 0     ;temporary
-!if TIMER = 0 {
-rowLenL     !byte 0
-}
 rowLenH     !byte 0
 saveX       = ptnOffs   ;temporary
 saveY       !byte 0     ;temporary
@@ -223,7 +215,8 @@ Reset
     pha
     bne     -
 
-!if TIMER & VISUALS {
+!if VISUALS {
+; position and size players
     dex
     nop
     nop
@@ -232,7 +225,7 @@ Reset
     sta     RESP0
     stx     NUSIZ0
     stx     NUSIZ1
-    stx     REFP0
+    stx     REFP0               ; use P1 to reverse direction
     sta     RESP1
 }
 
@@ -375,31 +368,13 @@ ReadPtn
 PlayerCode = *
 
     !pseudopc VAR_END {         ;actual player runs on zeropage
-.loopH                          ;8
-!if TIMER {
-    lda     #TEMPO              ;2          define next tick length,
+.loopH                          ;7
+    lda     #TEMPO              ;2          define tick length,
     sta     T1024T              ;4          constant, even if loop is exited
-}
     dec     rowLenH             ;5
-    bne     PlayNote            ;3/2 =  8/7 (+6)
+    bne     PlayNote            ;3/2 =  14/13
     jmp     ReadPtn             ;3
 ;---------------------------------------
-.waitCh0                        ;3
-!if TIMER = 0 & VISUALS {
-    txs                         ;2
-    lda+1   Sum0H               ;3
-    lsr                         ;2
-    lsr                         ;2
-    tax                         ;2
-    lda     WaveGfx,x           ;4
-    sta+2   PF2                 ;4
-    tsx                         ;2
-;Note: carry is random
-    bpl     ContinueCh0         ;3   = 27
-} else {
-    jmp     WaitCh0             ;24  = 27
-}
-
 .resetIdx1                      ;11          assumes 1st bit set
 Reset1  = *+1
     ldy     #3                  ;2   = 13    0,1,3,63(,58)
@@ -414,15 +389,9 @@ Vol1    = *+1
     sta     AUDV1               ;3   = 12
 ContinueCh1
 
-!if TIMER {
     lda     TIMINT              ;4
     bmi     .loopH              ;2/3 =  6/7
                                 ;           avg 88 cycles (was 114)
-} else {
-    dec     rowLenL             ;5          always loops 256 times here
-    beq     .loopH              ;2/3 =  7/8
-                                ;           avg 89 cycles (was 114)
-}
 ;---------------------------------------
 PlayNote
 .sum0L  = *+1
@@ -499,25 +468,17 @@ Pattern1 = *+1
 .contMask1                      ;5
     asl                         ;2
     bcc     .cont1              ;3
+;---------------------------------------
+.waitCh0                        ;3
+    jmp     WaitCh0             ;24  = 27
 
 .waitCh1                        ;3
     jmp     WaitCh1             ;24  = 27
+; 7 bytes RAM free (2 used by stack if VISUALS disabled)
 }
 PlayerLength = * - PlayerCode
 
-
 !if VISUALS {
- !if TIMER = 0 {
-WaitCh1                         ;3
-    lda+1   Freq0H              ;3
-    sta     COLUPF              ;3
-    lda     #1                  ;2
-    sta+2   CTRLPF              ;4
-    nop                         ;2
-    nop                         ;2
-    clc                         ;2
-    jmp     ContinueCh1         ;3   = 24
- } else { ; {
 WaitCh0                         ;3
     lda+1   Mask0               ;3
     sta     GRP0                ;3
@@ -530,14 +491,13 @@ WaitCh0                         ;3
 
 WaitCh1                         ;3
     lda+1   Freq0H              ;3
+    asl                         ;2          spread colors better
     sta     COLUP0              ;3
     lda+1   Freq1H              ;3
+    asl                         ;2          spread colors better
     sta     COLUP1              ;3
-    nop                         ;2
-    nop                         ;2
     clc                         ;2
     jmp     ContinueCh1         ;3   = 24
- }
 } else { ;{
 WaitCh0                         ;3
     jsr     Wait18              ;18
@@ -555,7 +515,59 @@ Wait18                          ;6
 } ;}
 
 !if NTSC { ;{
-;$10000 - Frequency * 256 * 256 / (1193181.67 / (89 + 8/256)) * div (div = 2, 15, 31)
+;$10000 - Frequency * 256 * 256 / (1193181.67 / (88 + 14/256)) * div (div = 2, 15, 31)
+FreqDiv2Msb = * - 1
+    !h  FF FF FF FF FF FF FF FF FF FE FE FE ;c-0..b-0
+    !h  FE FE FE FE FE FE FE FE FE FD FD FD ;c-1..b-1
+    !h  FD FD FD FD FC FC FC FC FC FB FB FB ;c-2..b-2
+    !h  FB FA FA FA F9 F9 F9 F8 F8 F7 F7 F6 ;c-3..b-3
+    !h  F6 F5 F4 F4 F3 F2 F2 F1 F0 EF EE ED ;c-4..b-4
+    !h  EC EB E9 E8 E7 E5 E4 E2 E0 DE DC DA ;c-5..b-5
+    !h  D8 D6 D3 D0 CE CB C8 C4 C1 BD B9 B5 ;c-6..b-6
+    !h  B0 AC A7 A1 9C 96 90 89 82 7A 73 6A ;c-7..b-7
+    !h  61 58 4E 43 38 2C 20 13 04          ;c-8..gis-8
+FreqDiv2Lsb = * - 1
+    !h  61 58 4E 43 38 2C 20 13 04 F5 E6 D5 ;c-0..b-0
+    !h  C3 B0 9C 87 71 59 40 26 09 EB CC AA ;c-1..b-1
+    !h  87 61 39 0F E2 B3 81 4C 13 D7 98 55 ;c-2..b-2
+    !h  0E C3 73 1F C5 67 02 98 27 AF 31 AB ;c-3..b-3
+    !h  1D 86 E7 3E 8B CD 05 30 4E 5F 62 56 ;c-4..b-4
+    !h  3A 0D CE 7D 17 9B 0A 60 9D BF C5 AD ;c-5..b-5
+    !h  75 1B 9D FA 2E 37 14 C1 3B 7F 8B 5A ;c-6..b-6
+    !h  EA 36 3B F4 5C 6F 28 82 76 FF 16 B5 ;c-7..b-7
+    !h  D5 6D 76 E8 B8 DF 51 04 EC          ;c-8..gis-8
+
+FreqDiv15Msb
+    !h  FB FB FA FA FA F9 F9 F9 F8 F8 F7 F7 ;c-0..b-0
+    !h  F6 F6 F5 F4 F4 F3 F2 F2 F1 F0 EF EE ;c-1..b-1
+    !h  ED EC EB E9 E8 E7 E5 E4 E2 E0 DE DD ;c-2..b-2
+    !h  DA D8 D6 D3 D1 CE CB C8 C5 C1 BD BA ;c-3..b-3
+    !h  B5 B1 AC A7 A2 9D 97 90 8A 83 7B 74 ;c-4..b-4
+    !h  6B 62 59 4F 45 3A 2E 21 14 06       ;c-5..a-5
+FreqDiv15Lsb = * - 1
+    !h  5D 17 CC 7C 29 D0 72 0E A4 34 BD 40 ;c-0..b-0
+    !h  BB 2E 98 FA 53 A1 E4 1D 4A 69 7C 80 ;c-1..b-1
+    !h  76 5C 31 F5 A5 41 C9 3A 93 D3 F9 02 ;c-2..b-2
+    !h  EE B9 63 EA 4B 84 92 74 27 A7 F2 05 ;c-3..b-3
+    !h  DB 73 C7 D4 96 08 26 E9 4F 4F E5 0A ;c-4..b-4
+    !h  B7 E6 8F A9 2D 11 4C D4 9E 9E       ;c-5..a-5
+
+FreqDiv31Msb
+    !h  F6 F5 F5 F4 F3 F3 F2 F1 F0 EF EE ED ;c-0..b-0
+    !h  EC EB EA E9 E7 E6 E4 E3 E1 DF DD DB ;c-1..b-1
+    !h  D9 D7 D5 D2 CF CC C9 C6 C3 BF BB B7 ;c-2..b-2
+    !h  B3 AE AA A4 9F 99 93 8D 86 7F 77 6F ;c-3..b-3
+    !h  66 5D 54 49 3E 33 27 1A 0C          ;c-4..gis-4
+FreqDiv31Lsb
+    !h  6C DB 40 9B EF 37 75 A6 CB E4 EF EB ;c-0..b-0
+    !h  D9 B4 80 39 DE 6F E9 4D 99 C9 DF D7 ;c-1..b-1
+    !h  B1 69 00 72 BC DD D3 9A 30 93 BF B0 ;c-2..b-2
+    !h  63 D5 01 E4 7A BC A7 35 63 27 7E 60 ;c-3..b-3
+    !h  C5 AA 03 C8 F2 78 4F 6B C6          ;c-4..gis-4
+    ;} /NTSC
+} else {
+    ; { PAL
+;$10000 - Frequency * 256 * 256 / (1182298 / (88 + 14/256)) * div (div = 2, 15, 31)
 FreqDiv2Msb = * - 1
     !h  FF FF FF FF FF FF FF FF FF FE FE FE ;c-0..b-0
     !h  FE FE FE FE FE FE FE FE FE FD FD FD ;c-1..b-1
@@ -564,112 +576,48 @@ FreqDiv2Msb = * - 1
     !h  F6 F5 F4 F4 F3 F2 F1 F1 F0 EF EE ED ;c-4..b-4
     !h  EC EA E9 E8 E6 E5 E3 E2 E0 DE DC DA ;c-5..b-5
     !h  D8 D5 D3 D0 CD CA C7 C4 C0 BC B8 B4 ;c-6..b-6
-    !h  B0 AB A6 A0 9B 95 8E 88 81 79 71 69 ;c-7..b-7
-    !h  60 56 4C 41 36 2A 1D 10             ;c-8..g-8
+    !h  B0 AB A6 A1 9B 95 8F 88 81 79 71 69 ;c-7..b-7
+    !h  60 56 4C 42 36 2A 1E 10 02          ;c-8..gis-8
 FreqDiv2Lsb = * - 1
-    !h  60 56 4C 41 36 2A 1D 10 02 F3 E3 D2 ;c-0..b-0
-    !h  C0 AD 98 83 6D 55 3B 20 04 E6 C6 A4 ;c-1..b-1
-    !h  80 5A 31 07 DA AA 77 41 08 CC 8C 48 ;c-2..b-2
-    !h  00 B4 63 0E B4 54 EE 83 11 98 18 90 ;c-3..b-3
-    !h  01 69 C7 1D 68 A8 DD 06 22 30 30 21 ;c-4..b-4
-    !h  02 D2 8F 3A D0 50 BA 0C 44 61 61 43 ;c-5..b-5
-    !h  05 A4 1F 74 A0 A2 75 18 89 C2 C3 87 ;c-6..b-6
-    !h  0A 48 3F E8 41 43 EB 31 12 85 86 0D ;c-7..b-7
-    !h  14 91 7E D2 83 87 D6 63             ;c-8..g-8
+    !h  60 56 4C 42 36 2A 1E 10 02 F3 E3 D2 ;c-0..b-0
+    !h  C0 AD 99 84 6D 55 3C 21 05 E7 C7 A5 ;c-1..b-1
+    !h  81 5B 33 08 DB AB 79 43 0A CE 8E 4A ;c-2..b-2
+    !h  03 B7 66 11 B7 57 F2 86 14 9C 1C 95 ;c-3..b-3
+    !h  05 6E CD 22 6E AE E4 0D 29 38 39 2A ;c-4..b-4
+    !h  0C DC 9A 45 DC 5D C8 1A 53 71 72 55 ;c-5..b-5
+    !h  18 B8 35 8B B8 BB 90 35 A7 E3 E5 AB ;c-6..b-6
+    !h  30 71 6A 16 71 76 21 6A 4E C6 CA 55 ;c-7..b-7
+    !h  60 E2 D4 2C E3 ED 42 D5 9D          ;c-8..gis-8
 
-FreqDiv15Msb
+FreqDiv15Msb = * - 1
     !h  FB FB FA FA FA F9 F9 F8 F8 F8 F7 F7 ;c-0..b-0
     !h  F6 F6 F5 F4 F4 F3 F2 F1 F1 F0 EF EE ;c-1..b-1
-    !h  ED EC EA E9 E8 E6 E5 E3 E2 E0 DE DC ;c-2..b-2
-    !h  DA D8 D5 D3 D0 CD CA C7 C4 C0 BD B9 ;c-3..b-3
-    !h  B5 B0 AB A6 A1 9B 95 8F 89 81 7A 72 ;c-4..b-4
-    !h  6A 61 57 4D 43 37 2B 1F 12 03       ;c-5..a-5
+    !h  ED EC EB E9 E8 E7 E5 E3 E2 E0 DE DC ;c-2..b-2
+    !h  DA D8 D6 D3 D0 CE CB C7 C4 C1 BD B9 ;c-3..b-3
+    !h  B5 B0 AC A7 A1 9C 96 8F 89 82 7A 72 ;c-4..b-4
+    !h  6A 61 58 4E 43 38 2C 1F 12 04       ;c-5..a-5
 FreqDiv15Lsb = * - 1
-    !h  50 09 BE 6D 18 BE 60 FA 8F 1E A6 27 ;c-0..b-0
-    !h  A1 12 7B DB 31 7E BF F5 20 3D 4D 4F ;c-1..b-1
-    !h  42 24 F6 B6 63 FB 7F EB 3F 7B 9B 9F ;c-2..b-2
-    !h  84 4A ED 6D C6 F8 FE D7 80 F6 37 3E ;c-3..b-3
-    !h  09 94 DB DA 8D EF FC AE 01 ED 6E 7D ;c-4..b-4
-    !h  12 28 B6 B5 1B DF F8 5D 01 DA       ;c-5..a-5
+    !h  52 0B C0 6F 1B C1 63 FE 93 22 AA 2B ;c-0..b-0
+    !h  A5 17 80 E0 37 84 C5 FC 27 45 55 57 ;c-1..b-1
+    !h  4B 2E 00 C1 6E 07 8B F8 4E 8A AB B0 ;c-2..b-2
+    !h  96 5D 01 82 DD 10 17 F1 9D 14 57 60 ;c-3..b-3
+    !h  2C BA 03 04 BA 1F 2F E3 3A 29 AE C0 ;c-4..b-4
+    !h  5A 74 06 0A 75 3E 5E C8 73 53       ;c-5..a-5
 
 FreqDiv31Msb
     !h  F6 F5 F5 F4 F3 F3 F2 F1 F0 EF EE ED ;c-0..b-0
-    !h  EC EB EA E8 E7 E6 E4 E2 E1 DF DD DB ;c-1..b-1
-    !h  D9 D6 D4 D1 CF CC C9 C5 C2 BE BA B6 ;c-2..b-2
-    !h  B2 AD A9 A3 9E 98 92 8B 85 7D 75 6D ;c-3..b-3
-    !h  65 5B 52 47 3C 31 24 17 0A          ;c-4..gis-4
+    !h  EC EB EA E9 E7 E6 E4 E3 E1 DF DD DB ;c-1..b-1
+    !h  D9 D7 D4 D2 CF CC C9 C6 C2 BE BB B7 ;c-2..b-2
+    !h  B2 AE A9 A4 9E 98 92 8C 85 7D 76 6E ;c-3..b-3
+    !h  65 5C 52 48 3D 31 25 18 0A          ;c-4..gis-4
 FreqDiv31Lsb
-    !h  51 BE 22 7B CD 12 4F 7D A0 B7 BE B8 ;c-0..b-0
-    !h  A2 7B 43 F8 9A 26 9C FB 42 6E 7E 70 ;c-1..b-1
-    !h  44 F6 86 F1 33 4C 39 F7 84 DC FD E2 ;c-2..b-2
-    !h  8A EE 0D E2 68 9A 73 EF 09 B9 FA C5 ;c-3..b-3
-    !h  12 DD 1B C3 CE 33 E8 DF 13          ;c-4..gis-4
-    ;} /NTSC
-} else {
-    ; { PAL
-;$10000 - Frequency * 256 * 256 / (1182298 / (89 + 8/256)) * div (div = 2, 15, 31)
-FreqDiv2Msb = * - 1
-    !h  FF FF FF FF FF FF FF FF FE FE FE FE ;c-0..b-0
-    !h  FE FE FE FE FE FE FE FE FD FD FD FD ;c-1..b-1
-    !h  FD FD FD FD FC FC FC FC FB FB FB FB ;c-2..b-2
-    !h  FA FA FA FA F9 F9 F8 F8 F7 F7 F7 F6 ;c-3..b-3
-    !h  F5 F5 F4 F4 F3 F2 F1 F0 EF EF EE EC ;c-4..b-4
-    !h  EB EA E9 E8 E6 E5 E3 E1 DF DE DC D9 ;c-5..b-5
-    !h  D7 D5 D2 D0 CD CA C6 C3 BF BC B8 B3 ;c-6..b-6
-    !h  AF AA A5 A0 9A 94 8D 87 7F 78 70 67 ;c-7..b-7
-    !h  5E 55 4A 40 34 28 1B 0E             ;c-8..g-8
-FreqDiv2Lsb = * - 1
-    !h  5E 55 4A 40 34 28 1B 0E FF F0 E0 CF ;c-0..b-0
-    !h  BD A9 95 80 69 51 37 1C FF E1 C0 9E ;c-1..b-1
-    !h  7A 53 2B 00 D2 A2 6F 38 FF C2 81 3D ;c-2..b-2
-    !h  F4 A8 56 00 A5 44 DE 71 FE 84 03 7A ;c-3..b-3
-    !h  E9 50 AD 01 4A 89 BC E2 FC 09 06 F5 ;c-4..b-4
-    !h  D3 A0 5A 02 95 12 78 C5 F9 12 0D EA ;c-5..b-5
-    !h  A6 40 B5 04 2A 24 F0 8B F3 24 1B D5 ;c-6..b-6
-    !h  4D 81 6B 08 54 48 E0 17 E6 48 37 AA ;c-7..b-7
-    !h  9B 02 D7 11 A8 90 C1 2E             ;c-8..g-8
-
-FreqDiv15Msb = * - 1
-    !h  FB FA FA FA FA F9 F9 F8 F8 F8 F7 F7 ;c-0..b-0
-    !h  F6 F5 F5 F4 F4 F3 F2 F1 F0 F0 EF EE ;c-1..b-1
-    !h  ED EB EA E9 E8 E6 E5 E3 E1 E0 DE DC ;c-2..b-2
-    !h  DA D7 D5 D3 D0 CD CA C7 C3 C0 BC B8 ;c-3..b-3
-    !h  B4 AF AB A6 A0 9B 95 8E 87 80 79 71 ;c-4..b-4
-    !h  68 5F 56 4C 41 36 2A 1D 0F 01       ;c-5..a-5
-FreqDiv15Lsb = * - 1
-    !h  45 FD B1 60 0B B0 50 EA 7E 0C 92 12 ;c-0..b-0
-    !h  8B FA 62 C1 16 60 A0 D4 FD 18 26 25 ;c-1..b-1
-    !h  15 F5 C4 82 2B C0 40 A9 F9 31 4C 4B ;c-2..b-2
-    !h  2C EC 8A 04 57 82 81 52 F4 62 99 97 ;c-3..b-3
-    !h  58 D9 15 08 AE 03 02 A5 E8 C4 33 2F ;c-4..b-4
-    !h  B1 B1 2A 11 5E 07 05 4C D0 88       ;c-5..a-5
-
-FreqDiv31Msb
-    !h  F6 F5 F5 F4 F3 F2 F2 F1 F0 EF EE ED ;c-0..b-0
-    !h  EC EB EA E8 E7 E5 E4 E2 E0 DF DD DB ;c-1..b-1
-    !h  D8 D6 D4 D1 CE CB C8 C5 C1 BE BA B6 ;c-2..b-2
-    !h  B1 AD A8 A3 9D 97 91 8A 83 7C 74 6C ;c-3..b-3
-    !h  63 5A 50 46 3B 2F 22 15 07          ;c-4..gis-4
-FreqDiv31Lsb
-    !h  3A A6 08 60 B0 F4 2E 5B 7C 90 95 8D ;c-0..b-0
-    !h  75 4A 0F C2 60 EA 5C B7 FA 21 2D 1A ;c-1..b-1
-    !h  E9 95 1F 84 C0 D2 B8 6F F3 43 5A 36 ;c-2..b-2
-    !h  D3 2D 40 09 82 A6 71 DE E8 86 B5 6D ;c-3..b-3
-    !h  A5 5A 81 10 02 4C E3 BC D0          ;c-4..gis-4
+    !h  56 C3 27 81 D3 18 55 84 A7 BE C6 C1 ;c-0..b-0
+    !h  AC 85 4D 03 A6 33 A9 09 51 7D 8F 82 ;c-1..b-1
+    !h  56 0A 9A 07 4A 65 53 13 A1 FB 1E 05 ;c-2..b-2
+    !h  AF 15 37 0E 96 CB A7 27 44 F7 3C 0B ;c-3..b-3
+    !h  5C 2B 6E 1A 2B 96 50 4E 89          ;c-4..gis-4
 } ;} /PAL
 
-!if TIMER = 0 & VISUALS {
-WaveGfx
-    !fill   7, %00000000
-    !fill   7, %10000000
-    !fill   7, %11000000
-    !fill   7, %01100000
-    !fill   8, %00110000
-    !fill   7, %00011000
-    !fill   7, %00001100
-    !fill   7, %00000110
-    !fill   7, %00000011
-}
     !zone debug
 !ifndef USED {
 USED = 1
