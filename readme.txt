@@ -35,7 +35,7 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (910, was 1147 bytes)
+- fairly large player (899, was 1147 bytes)
 - no support for AUDC waveforms 2, 3 (yet)
 
 
@@ -118,7 +118,7 @@ byte  bits   function
 3     0..7   note ch1
 4     0..2   waveform ch2 (0..4)
       3..6   volume ch2
-5     0..8   note ch2
+5     0..7   note ch2
 
 If bit 7 of byte 1 is set, byte 2 and 3 are omitted. Likewise, if bit 6 of byte
 1 is set, byte 4 and 5 are omitted. On the first step of the first pattern in

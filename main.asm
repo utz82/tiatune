@@ -35,9 +35,11 @@
 
 ;Assembler switches
 NTSC    = 0     ; else use PAL frequencies
-VISUALS = 0     ; add some visuals (both channels) (+28 bytes)
-BPM     = 150   ; should be defined in music.asm
-TPB     = 16    ; should be defined in music.asm
+VISUALS = 1     ; add some visuals (both channels) (+38 bytes)
+USE_SUB = 0     ; saves 28 bytes, costs ~16 cycles/channel loaded
+
+BPM     = 104   ; should be defined in music.asm
+TPB     = 24    ; should be defined in music.asm
 
 ; calculate TEMPO (do not change!)
 !if NTSC {
@@ -72,6 +74,9 @@ ptnPtrH     !byte 0     ;temporary
 rowLenH     !byte 0
 saveX       = ptnOffs   ;temporary
 saveY       !byte 0     ;temporary
+!if USE_SUB { ; {
+tmpDivL     !byte 0     ;temporary
+}
 VAR_END
     }
 
@@ -217,10 +222,8 @@ Reset
 
 !if VISUALS {
 ; position and size players
+    lda     (0,x)
     dex
-    nop
-    nop
-    nop
     stx     CTRLPF
     sta     RESP0
     stx     NUSIZ0
@@ -278,7 +281,7 @@ ReadPtn
     bcs     .xOK
     sta     saveX
 .xOK
-
+!if USE_SUB = 0 { ; {
     iny
     cpx     #2                  ;look up freq divider depending on waveform used
     bcs     +                   ;0,1 -> square/poly9
@@ -303,6 +306,12 @@ ReadPtn
     lda     FreqDiv31Msb,x
 .contCh0
     sta+1   Freq0H
+} else { ;{
+    jsr     LoadPattern
+    sta+1   Freq0H
+    lda     tmpDivL
+    sta+1   Freq0L
+} ;}
 .noCh0Reload
 
     bit     rowLenH
@@ -327,7 +336,7 @@ ReadPtn
     bcs     .yOK
     sta     saveY
 .yOK
-
+!if USE_SUB = 0 { ; {
     iny
     cpx     #2                  ;look up freq divider depending on waveform used
     bcs     +                   ;0,1 -> square/poly9
@@ -352,6 +361,12 @@ ReadPtn
     lda     FreqDiv2Msb,x
 .contCh1
     sta+1   Freq1H
+} else { ;{
+    jsr     LoadPattern
+    sta+1   Freq1H
+    lda     tmpDivL
+    sta+1   Freq1L
+};}
 .noCh1Reload
 
     lda     rowLenH
@@ -365,6 +380,34 @@ ReadPtn
 ;    clc
     jmp     PlayNote
 
+!if USE_SUB { ;{
+    !zone pattern
+LoadPattern
+    iny
+    cpx     #2                  ;look up freq divider depending on waveform used
+    bcs     +                   ;0,1 -> square/poly9
+    lax     (ptnPtrL),y         ;note
+    lda     FreqDiv2Lsb,x
+    sta     tmpDivL
+    lda     FreqDiv2Msb,x
+    rts
+
++
+    bne     +                   ;2 -> poly4
+    lax     (ptnPtrL),y
+    lda     FreqDiv15Lsb,x
+    sta     tmpDivL
+    lda     FreqDiv15Msb,x
+    rts
+
++
+    lax     (ptnPtrL),y         ;3,4 -> 1813/poly5
+    lda     FreqDiv2Lsb,x
+    sta     tmpDivL
+    lda     FreqDiv2Msb,x
+    rts
+} ;}
+
 PlayerCode = *
 
     !pseudopc VAR_END {         ;actual player runs on zeropage
@@ -372,25 +415,25 @@ PlayerCode = *
     lda     #TEMPO              ;2          define tick length,
     sta     T1024T              ;4          constant, even if loop is exited
     dec     rowLenH             ;5
-    bne     PlayNote            ;3/2 =  14/13
-    jmp     ReadPtn             ;3
+    bne     PlayNote            ;3/2= 14/13
+    jmp     ReadPtn             ;3          (RTS would work here too)
 ;---------------------------------------
-.resetIdx1                      ;11          assumes 1st bit set
+.resetIdx1                      ;11         assumes 1st bit set
 Reset1  = *+1
-    ldy     #3                  ;2   = 13    0,1,3,63(,58)
+    ldy     #3                  ;2  = 13    0,1,3,63(,58)
 Init1   = *+1
-    lda     #$02                ;2           or $01 (square,poly4->5)
+    lda     #$02                ;2          or $01/$40 (square/poly4->5)
     sta+1   Mask1               ;3
     nop                         ;2
 .loadV1
 Vol1    = *+1
     lda     #0                  ;2
 .zeroV1
-    sta     AUDV1               ;3   = 12
+    sta     AUDV1               ;3  = 12
 ContinueCh1
 
     lda     TIMINT              ;4
-    bmi     .loopH              ;2/3 =  6/7
+    bmi     .loopH              ;2/3=  6/7
                                 ;           avg 88 cycles (was 114)
 ;---------------------------------------
 PlayNote
@@ -399,13 +442,13 @@ PlayNote
 Freq0L  = *+1
     adc     #0                  ;2           CF==0!
     sta     .sum0L              ;3
-Sum0H  = *+1
+.sum0H  = *+1
     lda     #0                  ;2
 Freq0H  = *+1
     adc     #0                  ;2
-    sta+1   Sum0H               ;3   = 14
+    sta+1   .sum0H              ;3  = 14
 
-    bcs     .waitCh0            ;2/3 = 2/3
+    bcs     .waitCh0            ;2/3= 2/3
 ;create waveform from table
 ;assumes 1st bit of waveform always set
 Mask0   = *+1
@@ -415,7 +458,7 @@ Mask0   = *+1
     dex                         ;2
     bmi     .resetIdx0          ;2/3
 .cont0
-    sta+1   Mask0               ;3   = 13
+    sta+1   Mask0               ;3  = 13
 Pattern0 = *+1
     and     PatternTbl,x        ;4
     bne     .loadV0             ;2/3
@@ -425,18 +468,18 @@ Pattern0 = *+1
     asl                         ;2
     bcc     .cont0              ;3
 
-.resetIdx0                      ;11          assumes 1st bit set
+.resetIdx0                      ;11         assumes 1st bit set
 Reset0  = *+1
-    ldx     #3                  ;2   = 13    0,1,3,63(,58)
+    ldx     #3                  ;2  = 13    0,1,3,63(,58)
 Init0   = *+1
-    lda     #$02                ;2           or $01 (square,poly4->5)
+    lda     #$02                ;2          or $01/$40 (square/poly4->5)
     sta+1   Mask0               ;3
     nop                         ;2
 .loadV0
 Vol0    = *+1
     lda     #0                  ;2
 .zeroV0
-    sta     AUDV0               ;3   = 12
+    sta     AUDV0               ;3  = 12
 ; 31 bytes
 ContinueCh0
 ;---------------------------------------
@@ -445,13 +488,13 @@ ContinueCh0
 Freq1L  = *+1
     adc     #0                  ;2           CF==0!
     sta     .sum1L              ;3
-Sum1H  = *+1
+.sum1H  = *+1
     lda     #0                  ;2
 Freq1H  = *+1
     adc     #0                  ;2
-    sta+1   Sum1H               ;3   = 14
+    sta+1   .sum1H              ;3  = 14
 
-    bcs     .waitCh1            ;2/3 =  2/3
+    bcs     .waitCh1            ;2/3=  2/3
 Mask1   = *+1
     lda     #1                  ;2
     bpl     .contMask1          ;2/3
@@ -459,7 +502,7 @@ Mask1   = *+1
     dey                         ;2
     bmi     .resetIdx1          ;2/3
 .cont1
-    sta+1   Mask1               ;3   = 13
+    sta+1   Mask1               ;3  = 13
 Pattern1 = *+1
     and     PatternTbl,y        ;4
     bne     .loadV1             ;2/3
@@ -469,11 +512,21 @@ Pattern1 = *+1
     asl                         ;2
     bcc     .cont1              ;3
 ;---------------------------------------
+!if VISUALS {
 .waitCh0                        ;3
-    jmp     WaitCh0             ;24  = 27
+    jmp     WaitCh0             ;24 = 27
 
 .waitCh1                        ;3
-    jmp     WaitCh1             ;24  = 27
+    jmp     WaitCh1             ;24 = 27
+} else { ;{
+.waitCh0                        ;3
+    brk                         ;21
+    nop                         ;           2 bytes skipped
+.waitCh1                        ;3
+    brk                         ;21
+    bcc     ContinueCh0         ;3  = 27
+    bcc     ContinueCh1         ;3  = 27
+} ;}
 ; 7 bytes RAM free (2 used by stack if VISUALS disabled)
 }
 PlayerLength = * - PlayerCode
@@ -487,7 +540,7 @@ WaitCh0                         ;3
     nop                         ;2
     nop                         ;2
     clc                         ;2
-    jmp     ContinueCh0         ;3   = 24
+    jmp     ContinueCh0         ;3  = 24
 
 WaitCh1                         ;3
     lda+1   Freq0H              ;3
@@ -497,21 +550,13 @@ WaitCh1                         ;3
     asl                         ;2          spread colors better
     sta     COLUP1              ;3
     clc                         ;2
-    jmp     ContinueCh1         ;3   = 24
+    jmp     ContinueCh1         ;3  = 24
 } else { ;{
-WaitCh0                         ;3
-    jsr     Wait18              ;18
-    jmp     ContinueCh0         ;3   = 24
-
-WaitCh1                         ;3
-    jsr     Wait18              ;18
-    jmp     ContinueCh1         ;3   = 24
-
-Wait18                          ;6
-    nop                         ;2
+Wait                            ;7
+    pla                         ;4
     nop                         ;2
     clc                         ;2
-    rts                         ;6   = 18
+    rts                         ;6  = 21
 } ;}
 
 !if NTSC { ;{
@@ -643,11 +688,15 @@ ptn0
     !byte 0
 } else { ;}
     !source "music.asm"
+;    !source "music_2.asm"
+;    !source "music_std.asm"
 }
 
     * = $fffc
 
     !word   Reset          ; RESET
+!if VISUALS {
     !word   $0000          ; IRQ
-
-;       END
+} else {
+    !word   Wait
+}
