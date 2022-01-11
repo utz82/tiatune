@@ -36,7 +36,7 @@
 ;Assembler switches
 NTSC    = 0     ; else use PAL frequencies
 VISUALS = 1     ; add some visuals (both channels) (+38 bytes)
-USE_SUB = 0     ; saves 28 bytes, costs ~16 cycles/channel loaded
+USE_SUB = 1     ; saves 30 bytes, costs ~16 cycles/channel loaded
 
 BPM     = 104   ; should be defined in music.asm
 TPB     = 24    ; should be defined in music.asm
@@ -305,13 +305,11 @@ ReadPtn
     sta+1   Freq0L
     lda     FreqDiv31Msb,x
 .contCh0
-    sta+1   Freq0H
 } else { ;{
     jsr     LoadPattern
-    sta+1   Freq0H
-    lda     tmpDivL
-    sta+1   Freq0L
+    stx+1   Freq0L
 } ;}
+    sta+1   Freq0H
 .noCh0Reload
 
     bit     rowLenH
@@ -360,13 +358,11 @@ ReadPtn
     sta+1   Freq1L
     lda     FreqDiv2Msb,x
 .contCh1
-    sta+1   Freq1H
 } else { ;{
     jsr     LoadPattern
-    sta+1   Freq1H
-    lda     tmpDivL
-    sta+1   Freq1L
+    stx+1   Freq1L
 };}
+    sta+1   Freq1H
 .noCh1Reload
 
     lda     rowLenH
@@ -405,6 +401,7 @@ LoadPattern
     lda     FreqDiv2Lsb,x
     sta     tmpDivL
     lda     FreqDiv2Msb,x
+    ldx     tmpDivL
     rts
 } ;}
 
@@ -535,19 +532,19 @@ PlayerLength = * - PlayerCode
 WaitCh0                         ;3
     lda+1   Mask0               ;3
     sta     GRP0                ;3
-    lda+1   Mask1               ;3
-    sta     GRP1                ;3
-    nop                         ;2
-    nop                         ;2
+    lda+1   Freq0H              ;3
+    asl                         ;2          spread colors better
+    asl                         ;2
+    sta     COLUP0              ;3
     clc                         ;2
     jmp     ContinueCh0         ;3  = 24
 
 WaitCh1                         ;3
-    lda+1   Freq0H              ;3
-    asl                         ;2          spread colors better
-    sta     COLUP0              ;3
+    lda+1   Mask1               ;3
+    sta     GRP1                ;3
     lda+1   Freq1H              ;3
     asl                         ;2          spread colors better
+    asl                         ;2
     sta     COLUP1              ;3
     clc                         ;2
     jmp     ContinueCh1         ;3  = 24
@@ -559,6 +556,11 @@ Wait                            ;7
     rts                         ;6  = 21
 } ;}
 
+!ifndef PASS1 {
+    !warn * - $f000, " player byte"
+}
+
+FrequencyStart
 !if NTSC { ;{
 ;$10000 - Frequency * 256 * 256 / (1193181.67 / (88 + 14/256)) * div (div = 2, 15, 31)
 FreqDiv2Msb = * - 1
@@ -663,10 +665,8 @@ FreqDiv31Lsb
     !h  5C 2B 6E 1A 2B 96 50 4E 89          ;c-4..gis-4
 } ;} /PAL
 
-    !zone debug
-!ifndef USED {
-USED = 1
-    !warn * - $f000, " bytes used"
+!ifndef PASS1 {
+    !warn * - FrequencyStart, " frequency bytes"
 }
 
     !zone musicdata
@@ -687,10 +687,16 @@ ptn0
     !byte $5f, (%1111<<3)|SQUARE, a3
     !byte 0
 } else { ;}
-    !source "music.asm"
+;    !source "music.asm"
 ;    !source "music_2.asm"
-;    !source "music_std.asm"
+    !source "music_std.asm"
 }
+!ifndef PASS1 {
+    !warn * - musicData, " music bytes"
+    !warn $fffc - *, " bytes free"
+PASS1
+}
+
 
     * = $fffc
 
