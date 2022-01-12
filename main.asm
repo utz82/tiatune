@@ -36,9 +36,8 @@
 ;Assembler switches
 NTSC        = 0     ; else use PAL frequencies
 VISUALS     = 0     ; add some visuals (both channels) (+38 bytes)
+DEBUG       = 1     ; enable debug output
 MUSIC       = 0
-
-TPB         = 24    ; ticks per beat, should be defined in music.asm
 
 ; calculate TEMPO (do not change!)
 !if NTSC {
@@ -46,12 +45,9 @@ HZ      = 1193182
 } else {
 HZ      = 1182298
 }
-TDIV    = BPM * TPB * 1024
-TEMPO   = (HZ * 60 + TDIV / 2) / TDIV ; * 1024 = shortest note length
-
-;TDIV    = BPM * 1024 * 1000
-;TEMPO   = (HZ * 2500 + TDIV / 2) / TDIV ; * 1024 = shortest note length
-;!warn TEMPO
+;Calculation based on tick duration [ms] = 2500/BPM
+TDIV    = BPM * 1024 * 10
+TEMPO   = (HZ * 25 + TDIV / 2) / TDIV ; * 1024 = shortest note length
 
 ;Define which waveforms should be excluded
 ;NO_SQUARE
@@ -70,8 +66,8 @@ NO_POLY5_4
     * = $f000, invisible
     !pseudopc $80 {
 seqOffs     !byte 0     ;seqence offset in bytes
-ptnLength   !byte 0     ;length in rows
 ptnOffs     !byte 0     ;offset in bytes
+ptrOffsEnd  !byte 0     ;end of pattern offset
 ptnPtrL     !byte 0     ;temporary
 ptnPtrH     !byte 0     ;temporary
 rowLenH     !byte 0     ;low value in timer
@@ -241,28 +237,32 @@ Reset
     dex
     bpl     -
 
+; 40 - 20 = 20
+; 10 - F0 = 20
+
 .readSeq                        ;read next entry in sequence
     ldy     seqOffs
-    lda     sequence_hi,y
+    ldx     sequence,y
     beq     Reset               ;if hi-byte = 0, loop
+    lda     pattern_lookup_hi-1,x
     sta     ptnPtrH
-    lda     sequence_lo,y
+    lda     pattern_lookup_lo-1,x
     sta     ptnPtrL
+    eor     #$ff
+    sec
+    adc     pattern_lookup_lo,x
+    sta     ptrOffsEnd          ;begin of next pattern - begin of current pattern
     inc     seqOffs
     ldy     #0
-    lda     (ptnPtrL),y         ;ctrl byte
-    sta     ptnLength
-    iny
-    bne     .enterPtn
+    beq     .enterPtn
 
 ReadPtn
     sty     saveY
-    dec     ptnLength
-    beq     .readSeq
     ldy     ptnOffs             ;saveX and ptnOffs share the same RAM byte!
-.enterPtn
     stx     saveX
-
+    cpy     ptrOffsEnd
+    beq     .readSeq
+.enterPtn
     lda     (ptnPtrL),y         ;ctrl byte
     lsr
     sta     rowLenH
@@ -288,7 +288,7 @@ ReadPtn
     sta     saveX
 .xOK
     iny
-    lax     (ptnPtrL),y         ;note
+    lax     (ptnPtrL),y         ;note0
     lda     note_table_lo,x
     sta+1   Freq0L
     lda     note_table_hi,x
@@ -318,7 +318,7 @@ ReadPtn
     sta     saveY
 .yOK
     iny
-    lax     (ptnPtrL),y         ;note
+    lax     (ptnPtrL),y         ;note1
     lda     note_table_lo,x
     sta+1   Freq1L
     lda     note_table_hi,x
@@ -516,18 +516,19 @@ ptn0
   !if MUSIC = 2 { !source "music_std.asm" }
 }
 
-!ifndef PASS1 {
+!if DEBUG {
+  !ifndef PASS1 {
 PASS1
-} else {
+  } else {
     !ifndef PASS2 {
 PASS2
-} else {
+  } else {
     !ifndef PASS3 {
 PASS3
-}}}
+  }}}
 
     !zone debug
-!ifdef PASS3 {
+  !ifdef PASS3 {
     !warn TEMPO, " = TEMPO"
     !warn CodeStart - PatternTbl, "     wave form bytes"
     !warn FrequencyStart - CodeStart, " + code bytes"
@@ -535,6 +536,7 @@ PASS3
     !warn FrequencyEnd - $f000, " = player bytes"
     !warn * - musicData, " music bytes"
     !warn $fffc - *, " bytes free"
+  }
 }
 
     * = $fffc
