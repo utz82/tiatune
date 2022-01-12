@@ -34,12 +34,14 @@
 ;6     2                        poly4   r1813
 
 ;Assembler switches
-NTSC    = 0     ; else use PAL frequencies
-VISUALS = 1     ; add some visuals (both channels) (+38 bytes)
-USE_SUB = 1     ; saves 30 bytes, costs ~16 cycles/channel loaded
+NTSC        = 0     ; else use PAL frequencies
+VISUALS     = 0     ; add some visuals (both channels) (+38 bytes)
+NEW_FORMAT  = 1
+USE_SUB     = 0     ; saves 30 bytes, costs ~16 cycles/channel loaded (old format)
+MUSIC       = 0
 
-BPM     = 104   ; should be defined in music.asm
-TPB     = 24    ; should be defined in music.asm
+BPM         = 104   ; should be defined in music.asm
+TPB         = 24    ; should be defined in music.asm
 
 ; calculate TEMPO (do not change!)
 !if NTSC {
@@ -63,7 +65,7 @@ NO_POLY5_4
     !cpu 6510
 
     !source "vcs.h"
-    !source "notes.h"
+;    !source "notes.h"
 
     * = $f000, invisible
     !pseudopc $80 {
@@ -71,6 +73,9 @@ seqOffs     !byte 0     ;seqence offset
 ptnOffs     !byte 0
 ptnPtrL     !byte 0     ;temporary
 ptnPtrH     !byte 0     ;temporary
+!if NEW_FORMAT {
+ptnLength   !byte 0
+}
 rowLenH     !byte 0
 saveX       = ptnOffs   ;temporary
 saveY       !byte 0     ;temporary
@@ -210,6 +215,7 @@ ResetVal
 !ifndef NO_POLY5    { !byte    4-1 }
 !ifndef NO_POLY5_4  { !byte   59-1 }
 
+CodeStart
 Reset
     cld
     ldx     #0                  ;clear TIA regs, RAM, set SP to $00ff
@@ -249,19 +255,34 @@ Reset
     sta     ptnPtrL
     inc     seqOffs
     ldy     #0
+!if NEW_FORMAT = 0 {
     beq     .enterPtn
+} else {
+    lda     (ptnPtrL),y         ;ctrl byte
+    sta     ptnLength
+    iny
+    bne     .enterPtn
+}
 
 ReadPtn
     sty     saveY
     ldy     ptnOffs             ;saveX and ptnOffs share the same RAM byte!
+!if NEW_FORMAT {
+    dec     ptnLength
+    beq     .readSeq
+}
 .enterPtn
     stx     saveX
     lda     (ptnPtrL),y         ;ctrl byte
+!if NEW_FORMAT = 0 {
     beq     .readSeq            ;0-end marker
-
     sta     rowLenH
     bmi     .noCh0Reload
-
+} else {
+    lsr
+    sta     rowLenH
+    bcs     .noCh0Reload
+}
     iny
     lax     (ptnPtrL),y         ;wave0/vol0
     lsr
@@ -282,6 +303,7 @@ ReadPtn
     sta     saveX
 .xOK
 !if USE_SUB = 0 { ; {
+ !if NEW_FORMAT = 0 { ;{
     iny
     cpx     #2                  ;look up freq divider depending on waveform used
     bcs     +                   ;0,1 -> square/poly9
@@ -305,6 +327,13 @@ ReadPtn
     sta+1   Freq0L
     lda     FreqDiv31Msb,x
 .contCh0
+  } else { ;}
+    iny
+    lax     (ptnPtrL),y         ;note
+    lda     note_table_lo,x
+    sta+1   Freq0L
+    lda     note_table_hi,x
+  }
 } else { ;{
     jsr     LoadPattern
     stx+1   Freq0L
@@ -312,9 +341,13 @@ ReadPtn
     sta+1   Freq0H
 .noCh0Reload
 
+!if NEW_FORMAT = 0 {
     bit     rowLenH
     bvs     .noCh1Reload
-
+} else {
+    lsr     rowLenH
+    bcs     .noCh1Reload
+}
     iny
     lax     (ptnPtrL),y         ;wave1/vol1
     lsr
@@ -335,6 +368,7 @@ ReadPtn
     sta     saveY
 .yOK
 !if USE_SUB = 0 { ; {
+  !if NEW_FORMAT = 0 { ;{
     iny
     cpx     #2                  ;look up freq divider depending on waveform used
     bcs     +                   ;0,1 -> square/poly9
@@ -358,6 +392,13 @@ ReadPtn
     sta+1   Freq1L
     lda     FreqDiv2Msb,x
 .contCh1
+  } else { ;}
+    iny
+    lax     (ptnPtrL),y         ;note
+    lda     note_table_lo,x
+    sta+1   Freq1L
+    lda     note_table_hi,x
+  }
 } else { ;{
     jsr     LoadPattern
     stx+1   Freq1L
@@ -365,10 +406,11 @@ ReadPtn
     sta+1   Freq1H
 .noCh1Reload
 
+!if NEW_FORMAT = 0 {
     lda     rowLenH
     and     #$3f
     sta     rowLenH
-
+}
     ldx     saveX               ;saveX and ptnOffs share the same RAM byte!
     iny
     sty     ptnOffs
@@ -409,10 +451,14 @@ PlayerCode = *
 
     !pseudopc VAR_END {         ;actual player runs on zeropage
 .loopH                          ;7
-    lda     #TEMPO              ;2          define tick length,
+    lda     #TEMPO              ;2          define tick length, which is
     sta     T1024T              ;4          constant, even if loop is exited
     dec     rowLenH             ;5
+!if NEW_FORMAT = 0 {
     bne     PlayNote            ;3/2= 14/13
+} else {
+    bpl     PlayNote            ;3/2= 14/13
+}
     jmp     ReadPtn             ;3          (RTS would work here too)
 ;---------------------------------------
 .resetIdx1                      ;11         assumes 1st bit set
@@ -556,12 +602,9 @@ Wait                            ;7
     rts                         ;6  = 21
 } ;}
 
-!ifndef PASS1 {
-    !warn * - $f000, " player byte"
-}
-
 FrequencyStart
-!if NTSC { ;{
+!if NEW_FORMAT = 0 {
+  !if NTSC { ;{
 ;$10000 - Frequency * 256 * 256 / (1193181.67 / (88 + 14/256)) * div (div = 2, 15, 31)
 FreqDiv2Msb = * - 1
     !h  FF FF FF FF FF FF FF FF FF FE FE FE ;c-0..b-0
@@ -612,7 +655,7 @@ FreqDiv31Lsb
     !h  63 D5 01 E4 7A BC A7 35 63 27 7E 60 ;c-3..b-3
     !h  C5 AA 03 C8 F2 78 4F 6B C6          ;c-4..gis-4
     ;} /NTSC
-} else {
+  } else {
     ; { PAL
 ;$10000 - Frequency * 256 * 256 / (1182298 / (88 + 14/256)) * div (div = 2, 15, 31)
 FreqDiv2Msb = * - 1
@@ -663,11 +706,15 @@ FreqDiv31Lsb
     !h  56 0A 9A 07 4A 65 53 13 A1 FB 1E 05 ;c-2..b-2
     !h  AF 15 37 0E 96 CB A7 27 44 F7 3C 0B ;c-3..b-3
     !h  5C 2B 6E 1A 2B 96 50 4E 89          ;c-4..gis-4
-} ;} /PAL
-
-!ifndef PASS1 {
-    !warn * - FrequencyStart, " frequency bytes"
+  } ;} /PAL
+} else {
+  !if NTSC {
+    !source "note_table_ntsc.h"
+  } else {
+    !source "note_table_pal.h"
+  }
 }
+FrequencyEnd
 
     !zone musicdata
 musicData
@@ -687,16 +734,29 @@ ptn0
     !byte $5f, (%1111<<3)|SQUARE, a3
     !byte 0
 } else { ;}
-;    !source "music.asm"
-;    !source "music_2.asm"
-    !source "music_std.asm"
-}
-!ifndef PASS1 {
-    !warn * - musicData, " music bytes"
-    !warn $fffc - *, " bytes free"
-PASS1
+  !if MUSIC = 0 { !source "music.asm" }
+  !if MUSIC = 1 { !source "music_2.asm" }
+  !if MUSIC = 2 { !source "music_std.asm" }
 }
 
+!ifndef PASS1 {
+PASS1
+} else {
+    !ifndef PASS2 {
+PASS2
+} else {
+    !ifndef PASS3 {
+PASS3
+}}}
+
+!ifdef PASS3 {
+    !warn CodeStart - PatternTbl, "     wave form bytes"
+    !warn FrequencyStart - CodeStart, " + code bytes"
+    !warn FrequencyEnd - FrequencyStart, "  + frequency bytes"
+    !warn FrequencyEnd - $f000, " = player bytes"
+    !warn * - musicData, " music bytes"
+    !warn $fffc - *, " bytes free"
+}
 
     * = $fffc
 
