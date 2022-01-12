@@ -36,12 +36,9 @@
 ;Assembler switches
 NTSC        = 0     ; else use PAL frequencies
 VISUALS     = 0     ; add some visuals (both channels) (+38 bytes)
-NEW_FORMAT  = 1
-USE_SUB     = 0     ; saves 30 bytes, costs ~16 cycles/channel loaded (old format)
 MUSIC       = 0
 
-BPM         = 104   ; should be defined in music.asm
-TPB         = 24    ; should be defined in music.asm
+TPB         = 24    ; ticks per beat, should be defined in music.asm
 
 ; calculate TEMPO (do not change!)
 !if NTSC {
@@ -51,6 +48,10 @@ HZ      = 1182298
 }
 TDIV    = BPM * TPB * 1024
 TEMPO   = (HZ * 60 + TDIV / 2) / TDIV ; * 1024 = shortest note length
+
+;TDIV    = BPM * 1024 * 1000
+;TEMPO   = (HZ * 2500 + TDIV / 2) / TDIV ; * 1024 = shortest note length
+;!warn TEMPO
 
 ;Define which waveforms should be excluded
 ;NO_SQUARE
@@ -65,23 +66,17 @@ NO_POLY5_4
     !cpu 6510
 
     !source "vcs.h"
-;    !source "notes.h"
 
     * = $f000, invisible
     !pseudopc $80 {
-seqOffs     !byte 0     ;seqence offset
-ptnOffs     !byte 0
+seqOffs     !byte 0     ;seqence offset in bytes
+ptnLength   !byte 0     ;length in rows
+ptnOffs     !byte 0     ;offset in bytes
 ptnPtrL     !byte 0     ;temporary
 ptnPtrH     !byte 0     ;temporary
-!if NEW_FORMAT {
-ptnLength   !byte 0
-}
-rowLenH     !byte 0
+rowLenH     !byte 0     ;low value in timer
 saveX       = ptnOffs   ;temporary
 saveY       !byte 0     ;temporary
-!if USE_SUB { ; {
-tmpDivL     !byte 0     ;temporary
-}
 VAR_END
     }
 
@@ -255,34 +250,24 @@ Reset
     sta     ptnPtrL
     inc     seqOffs
     ldy     #0
-!if NEW_FORMAT = 0 {
-    beq     .enterPtn
-} else {
     lda     (ptnPtrL),y         ;ctrl byte
     sta     ptnLength
     iny
     bne     .enterPtn
-}
 
 ReadPtn
     sty     saveY
-    ldy     ptnOffs             ;saveX and ptnOffs share the same RAM byte!
-!if NEW_FORMAT {
     dec     ptnLength
     beq     .readSeq
-}
+    ldy     ptnOffs             ;saveX and ptnOffs share the same RAM byte!
 .enterPtn
     stx     saveX
+
     lda     (ptnPtrL),y         ;ctrl byte
-!if NEW_FORMAT = 0 {
-    beq     .readSeq            ;0-end marker
-    sta     rowLenH
-    bmi     .noCh0Reload
-} else {
     lsr
     sta     rowLenH
     bcs     .noCh0Reload
-}
+
     iny
     lax     (ptnPtrL),y         ;wave0/vol0
     lsr
@@ -302,52 +287,17 @@ ReadPtn
     bcs     .xOK
     sta     saveX
 .xOK
-!if USE_SUB = 0 { ; {
- !if NEW_FORMAT = 0 { ;{
-    iny
-    cpx     #2                  ;look up freq divider depending on waveform used
-    bcs     +                   ;0,1 -> square/poly9
-    lax     (ptnPtrL),y         ;note
-    lda     FreqDiv2Lsb,x
-    sta+1   Freq0L
-    lda     FreqDiv2Msb,x
-    bcc     .contCh0
-
-+
-    bne     +                   ;2 -> poly4
-    lax     (ptnPtrL),y
-    lda     FreqDiv15Lsb,x
-    sta+1   Freq0L
-    lda     FreqDiv15Msb,x
-    bcs     .contCh0
-
-+
-    lax     (ptnPtrL),y         ;3,4 -> 1813/poly5
-    lda     FreqDiv31Lsb,x
-    sta+1   Freq0L
-    lda     FreqDiv31Msb,x
-.contCh0
-  } else { ;}
     iny
     lax     (ptnPtrL),y         ;note
     lda     note_table_lo,x
     sta+1   Freq0L
     lda     note_table_hi,x
-  }
-} else { ;{
-    jsr     LoadPattern
-    stx+1   Freq0L
-} ;}
     sta+1   Freq0H
 .noCh0Reload
 
-!if NEW_FORMAT = 0 {
-    bit     rowLenH
-    bvs     .noCh1Reload
-} else {
     lsr     rowLenH
     bcs     .noCh1Reload
-}
+
     iny
     lax     (ptnPtrL),y         ;wave1/vol1
     lsr
@@ -367,85 +317,20 @@ ReadPtn
     bcs     .yOK
     sta     saveY
 .yOK
-!if USE_SUB = 0 { ; {
-  !if NEW_FORMAT = 0 { ;{
-    iny
-    cpx     #2                  ;look up freq divider depending on waveform used
-    bcs     +                   ;0,1 -> square/poly9
-    lax     (ptnPtrL),y         ;note
-    lda     FreqDiv2Lsb,x
-    sta+1   Freq1L
-    lda     FreqDiv2Msb,x
-    bcc     .contCh1
-
-+
-    bne     +                   ;2 -> poly4
-    lax     (ptnPtrL),y
-    lda     FreqDiv15Lsb,x
-    sta+1   Freq1L
-    lda     FreqDiv15Msb,x
-    bcs     .contCh1
-
-+
-    lax     (ptnPtrL),y         ;3,4 -> 1813/poly5
-    lda     FreqDiv2Lsb,x
-    sta+1   Freq1L
-    lda     FreqDiv2Msb,x
-.contCh1
-  } else { ;}
     iny
     lax     (ptnPtrL),y         ;note
     lda     note_table_lo,x
     sta+1   Freq1L
     lda     note_table_hi,x
-  }
-} else { ;{
-    jsr     LoadPattern
-    stx+1   Freq1L
-};}
     sta+1   Freq1H
 .noCh1Reload
 
-!if NEW_FORMAT = 0 {
-    lda     rowLenH
-    and     #$3f
-    sta     rowLenH
-}
     ldx     saveX               ;saveX and ptnOffs share the same RAM byte!
     iny
     sty     ptnOffs
     ldy     saveY
 ;    clc
     jmp     PlayNote
-
-!if USE_SUB { ;{
-    !zone pattern
-LoadPattern
-    iny
-    cpx     #2                  ;look up freq divider depending on waveform used
-    bcs     +                   ;0,1 -> square/poly9
-    lax     (ptnPtrL),y         ;note
-    lda     FreqDiv2Lsb,x
-    sta     tmpDivL
-    lda     FreqDiv2Msb,x
-    rts
-
-+
-    bne     +                   ;2 -> poly4
-    lax     (ptnPtrL),y
-    lda     FreqDiv15Lsb,x
-    sta     tmpDivL
-    lda     FreqDiv15Msb,x
-    rts
-
-+
-    lax     (ptnPtrL),y         ;3,4 -> 1813/poly5
-    lda     FreqDiv2Lsb,x
-    sta     tmpDivL
-    lda     FreqDiv2Msb,x
-    ldx     tmpDivL
-    rts
-} ;}
 
 PlayerCode = *
 
@@ -454,11 +339,7 @@ PlayerCode = *
     lda     #TEMPO              ;2          define tick length, which is
     sta     T1024T              ;4          constant, even if loop is exited
     dec     rowLenH             ;5
-!if NEW_FORMAT = 0 {
-    bne     PlayNote            ;3/2= 14/13
-} else {
     bpl     PlayNote            ;3/2= 14/13
-}
     jmp     ReadPtn             ;3          (RTS would work here too)
 ;---------------------------------------
 .resetIdx1                      ;11         assumes 1st bit set
@@ -603,116 +484,12 @@ Wait                            ;7
 } ;}
 
 FrequencyStart
-!if NEW_FORMAT = 0 {
-  !if NTSC { ;{
+!if NTSC {
 ;$10000 - Frequency * 256 * 256 / (1193181.67 / (88 + 14/256)) * div (div = 2, 15, 31)
-FreqDiv2Msb = * - 1
-    !h  FF FF FF FF FF FF FF FF FF FE FE FE ;c-0..b-0
-    !h  FE FE FE FE FE FE FE FE FE FD FD FD ;c-1..b-1
-    !h  FD FD FD FD FC FC FC FC FC FB FB FB ;c-2..b-2
-    !h  FB FA FA FA F9 F9 F9 F8 F8 F7 F7 F6 ;c-3..b-3
-    !h  F6 F5 F4 F4 F3 F2 F2 F1 F0 EF EE ED ;c-4..b-4
-    !h  EC EB E9 E8 E7 E5 E4 E2 E0 DE DC DA ;c-5..b-5
-    !h  D8 D6 D3 D0 CE CB C8 C4 C1 BD B9 B5 ;c-6..b-6
-    !h  B0 AC A7 A1 9C 96 90 89 82 7A 73 6A ;c-7..b-7
-    !h  61 58 4E 43 38 2C 20 13 04          ;c-8..gis-8
-FreqDiv2Lsb = * - 1
-    !h  61 58 4E 43 38 2C 20 13 04 F5 E6 D5 ;c-0..b-0
-    !h  C3 B0 9C 87 71 59 40 26 09 EB CC AA ;c-1..b-1
-    !h  87 61 39 0F E2 B3 81 4C 13 D7 98 55 ;c-2..b-2
-    !h  0E C3 73 1F C5 67 02 98 27 AF 31 AB ;c-3..b-3
-    !h  1D 86 E7 3E 8B CD 05 30 4E 5F 62 56 ;c-4..b-4
-    !h  3A 0D CE 7D 17 9B 0A 60 9D BF C5 AD ;c-5..b-5
-    !h  75 1B 9D FA 2E 37 14 C1 3B 7F 8B 5A ;c-6..b-6
-    !h  EA 36 3B F4 5C 6F 28 82 76 FF 16 B5 ;c-7..b-7
-    !h  D5 6D 76 E8 B8 DF 51 04 EC          ;c-8..gis-8
-
-FreqDiv15Msb
-    !h  FB FB FA FA FA F9 F9 F9 F8 F8 F7 F7 ;c-0..b-0
-    !h  F6 F6 F5 F4 F4 F3 F2 F2 F1 F0 EF EE ;c-1..b-1
-    !h  ED EC EB E9 E8 E7 E5 E4 E2 E0 DE DD ;c-2..b-2
-    !h  DA D8 D6 D3 D1 CE CB C8 C5 C1 BD BA ;c-3..b-3
-    !h  B5 B1 AC A7 A2 9D 97 90 8A 83 7B 74 ;c-4..b-4
-    !h  6B 62 59 4F 45 3A 2E 21 14 06       ;c-5..a-5
-FreqDiv15Lsb = * - 1
-    !h  5D 17 CC 7C 29 D0 72 0E A4 34 BD 40 ;c-0..b-0
-    !h  BB 2E 98 FA 53 A1 E4 1D 4A 69 7C 80 ;c-1..b-1
-    !h  76 5C 31 F5 A5 41 C9 3A 93 D3 F9 02 ;c-2..b-2
-    !h  EE B9 63 EA 4B 84 92 74 27 A7 F2 05 ;c-3..b-3
-    !h  DB 73 C7 D4 96 08 26 E9 4F 4F E5 0A ;c-4..b-4
-    !h  B7 E6 8F A9 2D 11 4C D4 9E 9E       ;c-5..a-5
-
-FreqDiv31Msb
-    !h  F6 F5 F5 F4 F3 F3 F2 F1 F0 EF EE ED ;c-0..b-0
-    !h  EC EB EA E9 E7 E6 E4 E3 E1 DF DD DB ;c-1..b-1
-    !h  D9 D7 D5 D2 CF CC C9 C6 C3 BF BB B7 ;c-2..b-2
-    !h  B3 AE AA A4 9F 99 93 8D 86 7F 77 6F ;c-3..b-3
-    !h  66 5D 54 49 3E 33 27 1A 0C          ;c-4..gis-4
-FreqDiv31Lsb
-    !h  6C DB 40 9B EF 37 75 A6 CB E4 EF EB ;c-0..b-0
-    !h  D9 B4 80 39 DE 6F E9 4D 99 C9 DF D7 ;c-1..b-1
-    !h  B1 69 00 72 BC DD D3 9A 30 93 BF B0 ;c-2..b-2
-    !h  63 D5 01 E4 7A BC A7 35 63 27 7E 60 ;c-3..b-3
-    !h  C5 AA 03 C8 F2 78 4F 6B C6          ;c-4..gis-4
-    ;} /NTSC
-  } else {
-    ; { PAL
-;$10000 - Frequency * 256 * 256 / (1182298 / (88 + 14/256)) * div (div = 2, 15, 31)
-FreqDiv2Msb = * - 1
-    !h  FF FF FF FF FF FF FF FF FF FE FE FE ;c-0..b-0
-    !h  FE FE FE FE FE FE FE FE FE FD FD FD ;c-1..b-1
-    !h  FD FD FD FD FC FC FC FC FC FB FB FB ;c-2..b-2
-    !h  FB FA FA FA F9 F9 F8 F8 F8 F7 F7 F6 ;c-3..b-3
-    !h  F6 F5 F4 F4 F3 F2 F1 F1 F0 EF EE ED ;c-4..b-4
-    !h  EC EA E9 E8 E6 E5 E3 E2 E0 DE DC DA ;c-5..b-5
-    !h  D8 D5 D3 D0 CD CA C7 C4 C0 BC B8 B4 ;c-6..b-6
-    !h  B0 AB A6 A1 9B 95 8F 88 81 79 71 69 ;c-7..b-7
-    !h  60 56 4C 42 36 2A 1E 10 02          ;c-8..gis-8
-FreqDiv2Lsb = * - 1
-    !h  60 56 4C 42 36 2A 1E 10 02 F3 E3 D2 ;c-0..b-0
-    !h  C0 AD 99 84 6D 55 3C 21 05 E7 C7 A5 ;c-1..b-1
-    !h  81 5B 33 08 DB AB 79 43 0A CE 8E 4A ;c-2..b-2
-    !h  03 B7 66 11 B7 57 F2 86 14 9C 1C 95 ;c-3..b-3
-    !h  05 6E CD 22 6E AE E4 0D 29 38 39 2A ;c-4..b-4
-    !h  0C DC 9A 45 DC 5D C8 1A 53 71 72 55 ;c-5..b-5
-    !h  18 B8 35 8B B8 BB 90 35 A7 E3 E5 AB ;c-6..b-6
-    !h  30 71 6A 16 71 76 21 6A 4E C6 CA 55 ;c-7..b-7
-    !h  60 E2 D4 2C E3 ED 42 D5 9D          ;c-8..gis-8
-
-FreqDiv15Msb = * - 1
-    !h  FB FB FA FA FA F9 F9 F8 F8 F8 F7 F7 ;c-0..b-0
-    !h  F6 F6 F5 F4 F4 F3 F2 F1 F1 F0 EF EE ;c-1..b-1
-    !h  ED EC EB E9 E8 E7 E5 E3 E2 E0 DE DC ;c-2..b-2
-    !h  DA D8 D6 D3 D0 CE CB C7 C4 C1 BD B9 ;c-3..b-3
-    !h  B5 B0 AC A7 A1 9C 96 8F 89 82 7A 72 ;c-4..b-4
-    !h  6A 61 58 4E 43 38 2C 1F 12 04       ;c-5..a-5
-FreqDiv15Lsb = * - 1
-    !h  52 0B C0 6F 1B C1 63 FE 93 22 AA 2B ;c-0..b-0
-    !h  A5 17 80 E0 37 84 C5 FC 27 45 55 57 ;c-1..b-1
-    !h  4B 2E 00 C1 6E 07 8B F8 4E 8A AB B0 ;c-2..b-2
-    !h  96 5D 01 82 DD 10 17 F1 9D 14 57 60 ;c-3..b-3
-    !h  2C BA 03 04 BA 1F 2F E3 3A 29 AE C0 ;c-4..b-4
-    !h  5A 74 06 0A 75 3E 5E C8 73 53       ;c-5..a-5
-
-FreqDiv31Msb
-    !h  F6 F5 F5 F4 F3 F3 F2 F1 F0 EF EE ED ;c-0..b-0
-    !h  EC EB EA E9 E7 E6 E4 E3 E1 DF DD DB ;c-1..b-1
-    !h  D9 D7 D4 D2 CF CC C9 C6 C2 BE BB B7 ;c-2..b-2
-    !h  B2 AE A9 A4 9E 98 92 8C 85 7D 76 6E ;c-3..b-3
-    !h  65 5C 52 48 3D 31 25 18 0A          ;c-4..gis-4
-FreqDiv31Lsb
-    !h  56 C3 27 81 D3 18 55 84 A7 BE C6 C1 ;c-0..b-0
-    !h  AC 85 4D 03 A6 33 A9 09 51 7D 8F 82 ;c-1..b-1
-    !h  56 0A 9A 07 4A 65 53 13 A1 FB 1E 05 ;c-2..b-2
-    !h  AF 15 37 0E 96 CB A7 27 44 F7 3C 0B ;c-3..b-3
-    !h  5C 2B 6E 1A 2B 96 50 4E 89          ;c-4..gis-4
-  } ;} /PAL
-} else {
-  !if NTSC {
     !source "note_table_ntsc.h"
-  } else {
+} else {
+;$10000 - Frequency * 256 * 256 / (1182298 / (88 + 14/256)) * div (div = 2, 15, 31)
     !source "note_table_pal.h"
-  }
 }
 FrequencyEnd
 
@@ -749,7 +526,9 @@ PASS2
 PASS3
 }}}
 
+    !zone debug
 !ifdef PASS3 {
+    !warn TEMPO, " = TEMPO"
     !warn CodeStart - PatternTbl, "     wave form bytes"
     !warn FrequencyStart - CodeStart, " + code bytes"
     !warn FrequencyEnd - FrequencyStart, "  + frequency bytes"

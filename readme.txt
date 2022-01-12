@@ -10,7 +10,7 @@ Updates
   to 13.5 kHz.
 - Since the new code uses tables, the missing waveforms can be easily added too.
 - Song tempo can be controlled now.
-- About 240 more bytes are free now for music.
+- About 630 more bytes are free now for music.
 - Optional simple visuals
 
 
@@ -35,7 +35,7 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (899, was 1147 bytes)
+- fairly large player (517 bytes with demo music, was 1147 bytes)
 - no support for AUDC waveforms 2, 3 (yet)
 
 
@@ -136,10 +136,10 @@ wave  AUDCx      range
 
 The remaining AUDCx waveforms are not supported by TIAtune.
 
+The first byte of each pattern must contain the number of rows.
+
 Each pattern may contain up to 255 data bytes. Thus, each pattern may contain at
 least 51 steps. In most cases however, it is advisable to use shorter patterns,
 to optimize overall data usage.
-
-Each pattern must be terminated with a 0-byte.
 
 For more information, check the provided example music.asm file.
