@@ -9,8 +9,9 @@ Updates
 - Optimized waveform generation code. This increased the sample rate from 10.4
   to 13.5 kHz.
 - Since the new code uses tables, the missing waveforms can be easily added too.
+- Optimized music data format to save space.
 - Song tempo can be controlled now.
-- About 630 more bytes are free now for music.
+- About 690 more bytes are free now for music.
 - Optional simple visuals
 
 
@@ -35,7 +36,7 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (517 bytes with demo music, was 1147 bytes)
+- fairly large player (523 bytes with demo music, was 1147 bytes)
 - no support for AUDC waveforms 2, 3 (yet)
 
 
@@ -87,20 +88,26 @@ by the main file.
 Sequence
 ========
 
-The sequence contains a list of pointers to patterns, in the order in which they
-are to be played. Is is split into a hi-byte and a lo-byte part, labelled
-"sequence_hi" and "sequence_lo", respectively. The hi-byte list must be
-terminated with a 0-byte.
+The sequence contains a list of ids of pointers to patterns, in the order in
+which they are to be played. The sequence list must be terminated with a 0-byte.
+The sequence may at most contain 255 entries.
 
-The sequence may at most contain 255 entries. The most simple sequence
-would thus be:
+The pattern pointer are split into a hi-byte and a lo-byte part, labelled
+"pattern_lookup_hi" and "pattern_lookup_lo", respectively. The pattern pointer
+must be ordered like the pattern definitions. The lo-list must be terminated
+with the lo-pointer to the byte after the last pattern.
 
-sequence_hi
-    !byte pattern>>8
-    !byte 0
-sequence_lo
-    !byte pattern&$ff
+The most simple sequence would thus be:
 
+sequence
+    !byte 1
+    !byte 0 ;terminator
+
+pattern_lookup_hi
+    !byte >pattern
+pattern_lookup_lo
+    !byte <pattern
+    !byte <patternEnd ; terminator
 
 Patterns
 ========
@@ -110,17 +117,17 @@ Patterns contain the actual music data. They consist of one or more rows
 is as follows:
 
 byte  bits   function
-1     0..5   tempo (step length)
-      6      if set, skip updating channel 2
-      7      if set, skip updating channel 1
+1     0      if set, skip updating channel 1
+      1      if set, skip updating channel 2
+      0..5   tempo (step length)
 2     0..2   waveform channel 1 (0..4)
-      3..6   volume ch1
-3     0..7   note ch1
-4     0..2   waveform ch2 (0..4)
-      3..6   volume ch2
-5     0..7   note ch2
+      3..6   volume channel 1
+3     0..7   note channel 1
+4     0..2   waveform channel 2 (0..4)
+      3..6   volume channel 2
+5     0..7   note channel 2
 
-If bit 7 of byte 1 is set, byte 2 and 3 are omitted. Likewise, if bit 6 of byte
+If bit 0 of byte 1 is set, byte 2 and 3 are omitted. Likewise, if bit 1 of byte
 1 is set, byte 4 and 5 are omitted. On the first step of the first pattern in
 the sequence, no data bytes may be omitted.
 
