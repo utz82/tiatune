@@ -3,5 +3,7 @@ xm2tiatune_src/target
 *.bin
 *.sym
 music.asm
+note_table_ntsc.h
+note_table_pal.h
 acme
 xm2tiatune
