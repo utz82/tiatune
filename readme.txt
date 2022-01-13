@@ -36,8 +36,8 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (523 bytes with demo music, was 1147 bytes)
-- no support for AUDC waveforms 2, 3 (yet)
+- fairly large player (520 bytes with demo music, was 1147 bytes)
+- no support for AUDC waveform 2 (yet)
 
 
 The TIAtune source is designed to be assembled with the ACME cross-assembler.

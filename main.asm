@@ -39,6 +39,15 @@ VISUALS     = 0     ; add some visuals (both channels) (+38 bytes)
 DEBUG       = 1     ; enable debug output
 MUSIC       = 0
 
+;TODO: include "..."
+;Define which waveforms should be included
+BPM = 104
+SQUARE = 0
+POLY9 = 1
+POLY4 = 2
+R1813 = 3
+POLY5 = 4
+
 ; calculate TEMPO (do not change!)
 !if NTSC {
 HZ      = 1193182
@@ -49,18 +58,10 @@ HZ      = 1182298
 TDIV    = BPM * 1024 * 10
 TEMPO   = (HZ * 25 + TDIV / 2) / TDIV ; * 1024 = shortest note length
 
-;Define which waveforms should be excluded
-;NO_SQUARE
-;NO_POLY9
-;NO_POLY4
-;NO_R1813
-;NO_POLY5
-NO_POLY5_4
-
     !to "tiatune.bin", plain
     !sl "tiatune.sym"
-    !cpu 6510
 
+    !cpu 6510
     !source "vcs.h"
 
     * = $f000, invisible
@@ -85,20 +86,20 @@ VAR_END
         !set .val = (.val >> 1) | .or
     }
 
-    !macro CreatePoly1 .val, .bits, .tap1, .tap2 {
-        !set .addr = * + (1 << (.bits - 3))
-        !set .pat = 0
-        !for .i, 2, 1 << .bits {
-            !set .pat = (.pat >> 1) | ((.val & 1) * $80)
-            !if (.i & 7) = 0 {
-                * = .addr - (.i >> 3), invisible ; store in reverse order
-                !byte <.pat
-                !set .pat = 0
-            }
-            +NextPoly ~.val, .bits, .tap1, .tap2
-        }
-        * = .addr
-    }
+;    !macro CreatePoly1 .val, .bits, .tap1, .tap2 {
+;        !set .addr = * + (1 << (.bits - 3))
+;        !set .pat = 0
+;        !for .i, 2, 1 << .bits {
+;            !set .pat = (.pat >> 1) | ((.val & 1) * $80)
+;            !if (.i & 7) = 0 {
+;                * = .addr - (.i >> 3), invisible ; store in reverse order
+;                !byte <.pat
+;                !set .pat = 0
+;            }
+;            +NextPoly ~.val, .bits, .tap1, .tap2
+;        }
+;        * = .addr
+;    }
 
     !macro CreatePoly5_4 .val5, .val4 {
         !set .length = ((1 << 5) - 1) * ((1 << 4) - 1)
@@ -155,71 +156,70 @@ VAR_END
 
     *       = $f000
     !zone main
-
-PolyX
+;PolyX
 ;    +CreatePoly1    1, 4, 1, 2
 ;    +CreatePoly1    1, 5, 1, 4
 ;    +CreatePoly5_4  %10011, %1111
 
 PatternTbl
 ;Note: 1st bit of a pattern MUST always be set!
-!ifndef NO_SQUARE {
+!ifdef SQUARE {
 SquarePtn
     !byte   %01010101 }
-!ifndef NO_POLY9 {
+!ifdef POLY9 {
 Poly9Ptn
     +CreatePoly 1, 510, 8, 256 }
-!ifndef NO_POLY4 {
+!ifdef POLY4 {
 Poly4Ptn
     +CreatePoly 1, 14, 1, 8 }
-!ifndef NO_R1813 {
+!ifdef R1813 {
 R1813Ptn
     !byte   %00000000, %00000111, %11111111, %11111110 }
-!ifndef NO_POLY5 {
+!ifdef POLY5 {
 Poly5Ptn
     +CreatePoly 1, 30, 2, 16 }
-!ifndef NO_POLY5_4 {
+!ifdef POLY5_4 {
 Poly5_4Ptn
     +CreatePoly5_4 %00001, %0001 }
 
 PatternPtr
-!ifndef NO_SQUARE   { !byte   <SquarePtn }
-!ifndef NO_POLY9    { !byte   <Poly9Ptn }
-!ifndef NO_POLY4    { !byte   <Poly4Ptn }
-!ifndef NO_R1813    { !byte   <R1813Ptn }
-!ifndef NO_POLY5    { !byte   <Poly5Ptn }
-!ifndef NO_POLY5_4  { !byte   <Poly5_4Ptn }
+!ifdef SQUARE   { !byte   <SquarePtn }
+!ifdef POLY9    { !byte   <Poly9Ptn }
+!ifdef POLY4    { !byte   <Poly4Ptn }
+!ifdef R1813    { !byte   <R1813Ptn }
+!ifdef POLY5    { !byte   <Poly5Ptn }
+!ifdef POLY5_4  { !byte   <Poly5_4Ptn }
 
 InitVal
-!ifndef NO_SQUARE   { !byte   $01 }
-!ifndef NO_POLY9    { !byte   $02 }
-!ifndef NO_POLY4    { !byte   $02 }
-!ifndef NO_R1813    { !byte   $02 }
-!ifndef NO_POLY5    { !byte   $02 }
-!ifndef NO_POLY5_4  { !byte   $40 }
+!ifdef SQUARE   { !byte   $01 }
+!ifdef POLY9    { !byte   $02 }
+!ifdef POLY4    { !byte   $02 }
+!ifdef R1813    { !byte   $02 }
+!ifdef POLY5    { !byte   $02 }
+!ifdef POLY5_4  { !byte   $40 }
 
 ResetVal
-!ifndef NO_SQUARE   { !byte    1-1 }
-!ifndef NO_POLY9    { !byte   64-1 }
-!ifndef NO_POLY4    { !byte    2-1 }
-!ifndef NO_R1813    { !byte    4-1 }
-!ifndef NO_POLY5    { !byte    4-1 }
-!ifndef NO_POLY5_4  { !byte   59-1 }
+!ifdef SQUARE   { !byte    1-1 }
+!ifdef POLY9    { !byte   64-1 }
+!ifdef POLY4    { !byte    2-1 }
+!ifdef R1813    { !byte    4-1 }
+!ifdef POLY5    { !byte    4-1 }
+!ifdef POLY5_4  { !byte   59-1 }
 
 CodeStart
 Reset
-    cld
-    ldx     #0                  ;clear TIA regs, RAM, set SP to $00ff
-    txa                         ;alternatively just use CLEAN_START macro
--
-    dex
-    txs
+;reset code adapted from Hard2632
+-                               ;clear TIA regs, most RAM, set SP to $00ff
+    lsr
+    tsx
     pha
-    bne     -
+    bne      -
+    cld
 
 !if VISUALS {
-; position and size players
-    lda     (0,x)
+;position and size players
+    nop
+    nop
     dex
     stx     CTRLPF
     sta     RESP0
@@ -237,9 +237,7 @@ Reset
     dex
     bpl     -
 
-; 40 - 20 = 20
-; 10 - F0 = 20
-
+    sec
 .readSeq                        ;read next entry in sequence
     ldy     seqOffs
     ldx     sequence,y
@@ -249,7 +247,6 @@ Reset
     lda     pattern_lookup_lo-1,x
     sta     ptnPtrL
     eor     #$ff
-    sec
     adc     pattern_lookup_lo,x
     sta     ptrOffsEnd          ;begin of next pattern - begin of current pattern
     inc     seqOffs
@@ -486,10 +483,14 @@ Wait                            ;7
 FrequencyStart
 !if NTSC {
 ;$10000 - Frequency * 256 * 256 / (1193181.67 / (88 + 14/256)) * div (div = 2, 15, 31)
-    !source "note_table_ntsc.h"
+    !if MUSIC = 0 { !source "note_table_ntsc.h" }
+    !if MUSIC = 1 { !source "note_table_ntsc_2.h" }
+    !if MUSIC = 2 { !source "note_table_ntsc_std.h" }
 } else {
 ;$10000 - Frequency * 256 * 256 / (1182298 / (88 + 14/256)) * div (div = 2, 15, 31)
-    !source "note_table_pal.h"
+    !if MUSIC = 0 { !source "note_table_pal.h" }
+    !if MUSIC = 1 { !source "note_table_pal_2.h" }
+    !if MUSIC = 2 { !source "note_table_pal_std.h" }
 }
 FrequencyEnd
 
