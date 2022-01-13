@@ -8,7 +8,7 @@
 ; + keep variables in X/Y
 ; + inline waveform code into RAM
 ; o precalulate waveforms
-;   o poly4_5
+;   + poly4_5
 ;   - R1813 -> poly4
 ; + rowLen via TIMxxT
 ; x variable tempo (using fractional math here too)
@@ -29,8 +29,8 @@
 ;2     1          c-0..a-5      poly4   r1813 (TODO: fix)
 ;3     6,A        c-0..gis-4    r1813   div31 (div2?)
 ;4     7,9        c-0..gis-4    poly5   div31
+;5     3                        poly5_4 div31
 ;TODO:
-;5     3                        poly5_4 div2
 ;6     2                        poly4   r1813
 
 ;Assembler switches
