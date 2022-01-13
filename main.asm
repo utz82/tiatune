@@ -207,7 +207,7 @@ Reset
     pha
     bne      -
     cld
-    sec
+    sec                         ;for .readSeq
 
 !if VISUALS {
 ;position and size players
@@ -217,7 +217,7 @@ Reset
     sta     RESP0
     stx     NUSIZ0
     stx     NUSIZ1
-    stx     REFP0               ; use P1 to reverse direction
+    stx     REFP0               ;use P1 to reverse direction
     sta     RESP1
 }
 
@@ -229,10 +229,16 @@ Reset
     dex
     bpl     -
 
-.readSeq                        ;read next entry in sequence
+ReadPtn
+    sty     saveY
+    ldy     ptnOffs             ;saveX and ptnOffs share the same RAM byte!
+    stx     saveX
+    cpy     ptrOffsEnd          ;if offset at next pattern, play next in sequence
+    bne     .skipReadSeq
+;read next entry in sequence
     ldy     seqOffs
     ldx     sequence,y
-    beq     Reset               ;if hi-byte = 0, loop
+    beq     Reset               ;if 0, loop
     lda     pattern_lookup_hi-1,x
     sta     ptnPtrH
     lda     pattern_lookup_lo-1,x
@@ -242,15 +248,7 @@ Reset
     sta     ptrOffsEnd          ;begin of next pattern - begin of current pattern
     inc     seqOffs
     ldy     #0
-    beq     .enterPtn
-
-ReadPtn
-    sty     saveY
-    ldy     ptnOffs             ;saveX and ptnOffs share the same RAM byte!
-    stx     saveX
-    cpy     ptrOffsEnd
-    beq     .readSeq
-.enterPtn
+.skipReadSeq
     lda     (ptnPtrL),y         ;ctrl byte
     lsr
     sta     rowLenH
@@ -488,20 +486,19 @@ FrequencyEnd
     !zone musicdata
 musicData
 !if 0 { ;{
-SQUARE  = 0
-POLY9   = 1
-POLY4   = 2
-R1813   = 3
-POLY5   = 4
-
-sequence_hi
-    !byte >ptn0
+sequence
+    !byte 1
     !byte 0
-sequence_lo
+pattern_lookup_lo
     !byte <ptn0
+    !byte <ptnEnd
+pattern_lookup_hi
+    !byte >ptn0
 ptn0
-    !byte $5f, (%1111<<3)|SQUARE, a3
-    !byte 0
+    !byte $1d, (%1111<<3)|POLY5_4, 3
+    !byte $1d, (%1111<<3)|POLY5_4, 2
+    !byte $1d, (%1111<<3)|POLY5_4, 1
+ptnEnd
 } else { ;}
   !if MUSIC = 0 { !source "music.asm" }
   !if MUSIC = 1 { !source "music_2.asm" }
