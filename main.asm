@@ -39,15 +39,6 @@ VISUALS     = 0     ; add some visuals (both channels) (+38 bytes)
 DEBUG       = 1     ; enable debug output
 MUSIC       = 0
 
-;TODO: include "..."
-;Define which waveforms should be included
-BPM = 104
-SQUARE = 0
-POLY9 = 1
-POLY4 = 2
-R1813 = 3
-POLY5 = 4
-
 ; calculate TEMPO (do not change!)
 !if NTSC {
 HZ      = 1193182
@@ -63,6 +54,7 @@ TEMPO   = (HZ * 25 + TDIV / 2) / TDIV ; * 1024 = shortest note length
 
     !cpu 6510
     !source "vcs.h"
+    !source "def.h"
 
     * = $f000, invisible
     !pseudopc $80 {
@@ -215,10 +207,10 @@ Reset
     pha
     bne      -
     cld
+    sec
 
 !if VISUALS {
 ;position and size players
-    nop
     nop
     dex
     stx     CTRLPF
@@ -237,7 +229,6 @@ Reset
     dex
     bpl     -
 
-    sec
 .readSeq                        ;read next entry in sequence
     ldy     seqOffs
     ldx     sequence,y
@@ -246,7 +237,7 @@ Reset
     sta     ptnPtrH
     lda     pattern_lookup_lo-1,x
     sta     ptnPtrL
-    eor     #$ff
+    eor     #$ff                ;CF==1!
     adc     pattern_lookup_lo,x
     sta     ptrOffsEnd          ;begin of next pattern - begin of current pattern
     inc     seqOffs
