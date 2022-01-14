@@ -34,10 +34,10 @@
 ;6     2                        poly4   r1813
 
 ;Assembler switches
-NTSC        = 0     ; else use PAL frequencies
-VISUALS     = 0     ; add some visuals (both channels) (+38 bytes)
-DEBUG       = 1     ; enable debug output
-MUSIC       = 0
+NTSC    = 0     ; else use PAL frequencies
+VISUALS = 0     ; add some visuals (both channels) (+38 bytes)
+DEBUG   = 1     ; enable debug output
+MUSIC   = 0     ; chose track (0..2)
 
 ; calculate TEMPO (do not change!)
 !if NTSC {
@@ -58,7 +58,7 @@ TEMPO   = (HZ * 25 + TDIV / 2) / TDIV ; * 1024 = shortest note length
 
     * = $f000, invisible
     !pseudopc $80 {
-seqOffs     !byte 0     ;seqence offset in bytes
+seqOffs     !byte 0     ;sequence offset in bytes
 ptnOffs     !byte 0     ;offset in bytes
 ptrOffsEnd  !byte 0     ;end of pattern offset
 ptnPtrL     !byte 0     ;temporary
@@ -207,10 +207,10 @@ Reset
     pha
     bne      -
     cld
-    sec                         ;for .readSeq
 
 !if VISUALS {
 ;position and size players
+    nop
     nop
     dex
     stx     CTRLPF
@@ -239,13 +239,23 @@ ReadPtn
     ldy     seqOffs
     ldx     sequence,y
     beq     Reset               ;if 0, loop
-    lda     pattern_lookup_hi-1,x
-    sta     ptnPtrH
     lda     pattern_lookup_lo-1,x
     sta     ptnPtrL
     eor     #$ff                ;CF==1!
     adc     pattern_lookup_lo,x
     sta     ptrOffsEnd          ;begin of next pattern - begin of current pattern
+;    txa
+;    lsr
+    lda     pattern_lookup_hi-1,x
+;    bcc     .even
+;    lsr
+;    lsr
+;    lsr
+;    lsr
+;.even
+;    and     #$0f
+;    ora     #ptn1 & $f0
+    sta     ptnPtrH
     inc     seqOffs
     ldy     #0
 .skipReadSeq
