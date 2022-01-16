@@ -1,17 +1,17 @@
 ********************************************************************************
 TIAtune v0.3.0
 by utz 11'2017 * irrlichtproject.de
-updated by Thomas Jentzsch 01'2022
+updated by Thomas Jentzsch and utz 01'2022
 ********************************************************************************
 
 Updates
 ================================================================================
 - Optimized waveform generation code. This increased the sample rate from 10.4
   to 13.5 kHz.
-- Since the new code uses tables, the missing waveforms can be easily added too.
+- All TIA waveforms are supported.
 - Optimized music data format to save space.
-- Song tempo can be controlled now.
-- About 690 more bytes are free now for music.
+- Song tempo can be controlled now
+- About 700 more bytes are free now for music.
 - Optional simple visuals
 
 
@@ -27,17 +27,17 @@ in TIAtune.
 Features
 ========
 
-- 16-bit frequency dividers (accurate pitch within <1% margin)
-- sample rate: 10.4 KHz
+- 16-bit frequency dividers (accurate pitch within <0.15% margin)
+- sample rate: 13.5 KHz
 - per-step tempo, 6-bit tempo resolution
+- BPM (~2.5 BMP granularity).
 
 
 Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (520 bytes with demo music, was 1147 bytes)
-- no support for AUDC waveform 2 (yet)
+- fairly large player (517 bytes with demo music, was 1147 bytes)
 
 
 The TIAtune source is designed to be assembled with the ACME cross-assembler.
@@ -55,10 +55,13 @@ emulator installed. Then simply run compile.cmd (Windows) or compile.sh
 The following limitations apply:
 
 - Any changes to instruments/samples are ignored.
-- Changes to BPM are ignored (TODO: fix this)
 - FX commands are ignored, except for Fxx (change tempo, xx < 0x20)
-- The range of instrument 3 is limited to C-0..A-5, and the range of instruments
-  4 and 5 is limited to C-0..Gis-4.
+- The range of instruments is limited:
+  - instruments 1 and 2: C0..G#8
+  - instrument 3: C0..A5
+  - instruments 4, 5 and 6: C0..G#4
+  - instrument 7: C0..G#2
+  - instrument 8: C0..A1
 
 Pattern length is also limited. The actual limit depends on the converted data
 size. In the worst case, you will run out of bytes after 51 rows, but normally
@@ -135,15 +138,13 @@ AUDCx equivalents of the waveform parameter, and their note ranges are as
 follows:
 
 wave  AUDCx      range
-0     4,5,C,D    c-0..gis-8
-1     8          c-0..gis-8
-2     1          c-0..a-5
-3     6,A        c-0..gis-4
-4     7,9        c-0..gis-4
-
-The remaining AUDCx waveforms are not supported by TIAtune.
-
-The first byte of each pattern must contain the number of rows.
+0     4,5,C,D    C0..G#8
+1     8          C0..G#8
+2     1          C0..A5
+3     6,A        C0..G#4
+4     7,9        C0..G#4
+5     3          C0..G#2
+6     2          C0..A1
 
 Each pattern may contain up to 255 data bytes. Thus, each pattern may contain at
 least 51 steps. In most cases however, it is advisable to use shorter patterns,

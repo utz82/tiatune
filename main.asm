@@ -1,7 +1,7 @@
 ;TIAtune
 ;Atari 2600 music player
 ;by utz 10'2017 * irrlichtproject.de
-;improved by Thomas Jentzsch 01'2021
+;improved by Thomas Jentzsch & utz 01'2021
 
 ; Ideas:
 ; + get rid of initial CLC
@@ -26,8 +26,8 @@
 ;wave  AUDCx      range         type
 ;0     4,5        c-0..gis-8    square  div2
 ;1     8          c-0..gis-8    poly9   div2
-;2     1          c-0..a-5      poly4   r1813 (TODO: fix)
-;3     6,A        c-0..gis-4    r1813   div31 (div2?)
+;2     1          c-0..a-5      poly4   r1813
+;3     6,A        c-0..gis-4    r1813   div31
 ;4     7,9        c-0..gis-4    poly5   div31
 ;5     3                        poly5_4 div31
 ;TODO:
@@ -55,6 +55,8 @@ TEMPO   = (HZ * 25 + TDIV / 2) / TDIV ; * 1024 = shortest note length
     !cpu 6510
     !source "vcs.h"
     !source "def.h"
+;POLY5_4 = 5
+;R1813_POLY4 = 6
 
     * = $f000, invisible
     !pseudopc $80 {
@@ -69,89 +71,125 @@ saveY       !byte 0     ;temporary
 VAR_END
     }
 
-    !macro NextPoly ~.val, .bits, .tap1, .tap2  {
-        !if (.val & .tap1) != 0 XOR (.val & .tap2) != 0 {
-            !set .or = 1 << (.bits - 1)
-        } else {
-            !set .or = 0
-        }
-        !set .val = (.val >> 1) | .or
+!macro NextPoly ~.val, .bits, .tap1, .tap2  {
+    !if (.val & .tap1) != 0 XOR (.val & .tap2) != 0 {
+        !set .or = 1 << (.bits - 1)
+    } else {
+        !set .or = 0
     }
+    !set .val = (.val >> 1) | .or
+}
 
-;    !macro CreatePoly1 .val, .bits, .tap1, .tap2 {
-;        !set .addr = * + (1 << (.bits - 3))
-;        !set .pat = 0
-;        !for .i, 2, 1 << .bits {
-;            !set .pat = (.pat >> 1) | ((.val & 1) * $80)
-;            !if (.i & 7) = 0 {
-;                * = .addr - (.i >> 3), invisible ; store in reverse order
-;                !byte <.pat
-;                !set .pat = 0
-;            }
-;            +NextPoly ~.val, .bits, .tap1, .tap2
+;!macro CreatePoly1 .val, .bits, .tap1, .tap2 {
+;    !set .addr = * + (1 << (.bits - 3))
+;    !set .pat = 0
+;    !for .i, 2, 1 << .bits {
+;        !set .pat = (.pat >> 1) | ((.val & 1) * $80)
+;        !if (.i & 7) = 0 {
+;            * = .addr - (.i >> 3), invisible ; store in reverse order
+;            !byte <.pat
+;            !set .pat = 0
 ;        }
-;        * = .addr
+;        +NextPoly ~.val, .bits, .tap1, .tap2
 ;    }
+;    * = .addr
+;}
 
-    !macro CreatePoly5_4 .val5, .val4 {
-        !set .length = ((1 << 5) - 1) * ((1 << 4) - 1)
-        !set .addr = * + ((.length + 7) >> 3)
-        !set .pat = 0
-        !for .i, 1+6, .length+6 {
+!macro CreatePoly5_4 .val5, .val4 {
+    !set .length = ((1 << 5) - 1) * ((1 << 4) - 1)
+    !set .addr = * + ((.length + 7) >> 3)
+    !set .pat = 0
+    !for .i, 1+6, .length+6 {
+;        !warn .val4 & 1, .i
+        !set .pat = (.pat >> 1) | ((.val4 & 1) * $80)
+        !if (.i & 7) = 0 {
+            * = .addr - (.i >> 3), invisible ; store in reverse order
+;            !warn .i, *, <.pat
+            !byte <.pat
+            !set .pat = 0
+        }
+        +NextPoly ~.val5, 5, 1, 4
+        !if (.val5 & 1) = 1 {
+            +NextPoly ~.val4, 4, 1, 2
+        }
+    }
+    * = .addr - ((.i + 7) >> 3), invisible ; store in reverse order
+;    !warn .i, *, <.pat
+    !byte <.pat
+    * = .addr
+}
+
+!macro CreateR1813_Poly4 .val4 {
+    !set .length = ((1 << 4) - 1) * 31
+    !set .addr = * + ((.length + 7) >> 3)
+;    !warn *, ", addr ", .addr, ", length ", .length
+    !set .pat = 0
+    !set .c = 7
+    !for .i, 1, 15 {
+        !for .j, 1, 13 {
 ;            !warn .val4 & 1, .i
             !set .pat = (.pat >> 1) | ((.val4 & 1) * $80)
-            !if (.i & 7) = 0 {
-                * = .addr - (.i >> 3), invisible ; store in reverse order
-;                !warn .i, *, <.pat
+            !set .c = .c + 1
+            !if (.c & 7) = 0 {
+                * = .addr - (.c >> 3), invisible ; store in reverse order
+;                !warn .c, *, <.pat
                 !byte <.pat
                 !set .pat = 0
             }
-            +NextPoly ~.val5, 5, 1, 4
-            !if (.val5 & 1) = 1 {
-                +NextPoly ~.val4, 4, 1, 2
+        }
+        +NextPoly ~.val4, 4, 1, 2
+        !for .j, 1, 18 {
+;            !warn .val4 & 1, .i
+            !set .pat = (.pat >> 1) | ((.val4 & 1) * $80)
+            !set .c = .c + 1
+            !if (.c & 7) = 0 {
+                * = .addr - (.c >> 3), invisible ; store in reverse order
+;                !warn .c, *, <.pat
+                !byte <.pat
+                !set .pat = 0
             }
         }
-        * = .addr - ((.i + 7) >> 3), invisible ; store in reverse order
-;        !warn .i, *, <.pat
-        !byte <.pat
-        * = .addr
+        +NextPoly ~.val4, 4, 1, 2
     }
+;    !set .pat = (.pat >> 1) | ((.val4 & 1) * $80)
+    * = .addr - ((.c + 7) >> 3), invisible ; store in reverse order
+;    !warn .c, *, <.pat
+;    !byte <.pat
+    * = .addr
+}
 
-    !macro PrevPoly ~.val, .tap1, .tap2  {
-        !if (.val & .tap1) != 0 XOR (.val & .tap2) != 0 {
-            !set .or = 1
-        } else {
-            !set .or = 0
-        }
-        !set .val = (.val << 1) | .or
+
+!macro PrevPoly ~.val, .tap1, .tap2  {
+    !if (.val & .tap1) != 0 XOR (.val & .tap2) != 0 {
+        !set .or = 1
+    } else {
+        !set .or = 0
     }
+    !set .val = (.val << 1) | .or
+}
 
-    !macro CreatePoly .init, .count, .tap1, .tap2 {
-        !set .val = .init
-        !set .idx = 0
-        !for .x, 0, .count {
-            +PrevPoly ~.val, .tap1, .tap2
-            !set .pat = .pat << 1
-            !if (.val & 1) = 1 {
-                !set .pat = .pat | 1
-            }
-            !set .idx = .idx + 1
-            !if .idx = 8 {
-              !set .idx = 0
-              !byte <.pat
-              !set .pat = 0
-            }
-        }
+!macro CreatePoly .init, .count, .tap1, .tap2 {
+    !set .val = .init
+    !set .idx = 0
+    !for .x, 0, .count {
+        +PrevPoly ~.val, .tap1, .tap2
         !set .pat = .pat << 1
-        !byte <.pat
+        !if (.val & 1) = 1 {
+            !set .pat = .pat | 1
+        }
+        !set .idx = .idx + 1
+        !if .idx = 8 {
+          !set .idx = 0
+          !byte <.pat
+          !set .pat = 0
+        }
     }
+    !set .pat = .pat << 1
+    !byte <.pat
+}
 
     *       = $f000
     !zone main
-;PolyX
-;    +CreatePoly1    1, 4, 1, 2
-;    +CreatePoly1    1, 5, 1, 4
-;    +CreatePoly5_4  %10011, %1111
 
 PatternTbl
 ;Note: 1st bit of a pattern MUST always be set!
@@ -173,30 +211,36 @@ Poly5Ptn
 !ifdef POLY5_4 {
 Poly5_4Ptn
     +CreatePoly5_4 %00001, %0001 }
+!ifdef R1813_POLY4 {
+R1813_Poly4Ptn
+    +CreateR1813_Poly4 %0001 }
 
 PatternPtr
-!ifdef SQUARE   { !byte   <SquarePtn }
-!ifdef POLY9    { !byte   <Poly9Ptn }
-!ifdef POLY4    { !byte   <Poly4Ptn }
-!ifdef R1813    { !byte   <R1813Ptn }
-!ifdef POLY5    { !byte   <Poly5Ptn }
-!ifdef POLY5_4  { !byte   <Poly5_4Ptn }
+!ifdef SQUARE       { !byte   <SquarePtn }
+!ifdef POLY9        { !byte   <Poly9Ptn }
+!ifdef POLY4        { !byte   <Poly4Ptn }
+!ifdef R1813        { !byte   <R1813Ptn }
+!ifdef POLY5        { !byte   <Poly5Ptn }
+!ifdef POLY5_4      { !byte   <Poly5_4Ptn }
+!ifdef R1813_POLY4  { !byte   <R1813_Poly4Ptn }
 
 InitVal
-!ifdef SQUARE   { !byte   $01 }
-!ifdef POLY9    { !byte   $02 }
-!ifdef POLY4    { !byte   $02 }
-!ifdef R1813    { !byte   $02 }
-!ifdef POLY5    { !byte   $02 }
-!ifdef POLY5_4  { !byte   $40 }
+!ifdef SQUARE       { !byte   $01 }
+!ifdef POLY9        { !byte   $02 }
+!ifdef POLY4        { !byte   $02 }
+!ifdef R1813        { !byte   $02 }
+!ifdef POLY5        { !byte   $02 }
+!ifdef POLY5_4      { !byte   $80 }
+!ifdef R1813_POLY4  { !byte   $80 }
 
 ResetVal
-!ifdef SQUARE   { !byte    1-1 }
-!ifdef POLY9    { !byte   64-1 }
-!ifdef POLY4    { !byte    2-1 }
-!ifdef R1813    { !byte    4-1 }
-!ifdef POLY5    { !byte    4-1 }
-!ifdef POLY5_4  { !byte   59-1 }
+!ifdef SQUARE       { !byte    1-1 }
+!ifdef POLY9        { !byte   64-1 }
+!ifdef POLY4        { !byte    2-1 }
+!ifdef R1813        { !byte    4-1 }
+!ifdef POLY5        { !byte    4-1 }
+!ifdef POLY5_4      { !byte   59-1 }
+!ifdef R1813_POLY4  { !byte   59-1 }
 
 CodeStart
 Reset
@@ -246,6 +290,7 @@ ReadPtn
     sta     ptrOffsEnd          ;begin of next pattern - begin of current pattern
 ;    txa
 ;    lsr
+;    tax
     lda     pattern_lookup_hi-1,x
 ;    bcc     .even
 ;    lsr
@@ -254,7 +299,7 @@ ReadPtn
 ;    lsr
 ;.even
 ;    and     #$0f
-;    ora     #ptn1 & $f0
+;    ora     #>ptn1 & $f0
     sta     ptnPtrH
     inc     seqOffs
     ldy     #0
