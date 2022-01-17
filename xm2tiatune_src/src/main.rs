@@ -11,7 +11,13 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::str;
 
-const INSTRUMENT_NAMES: [&str; 5] = ["TONE", "POLY9", "POLY4", "R1813", "POLY5"];
+const DEFAULT_ORIGIN: usize = 0xf000;
+const PLAYER_SIZE: usize = 290;
+const MAX_BIN_SIZE: usize = 0xffc;
+const INSTRUMENT_NAMES: [&str; 6] = ["SQUARE", "POLY9", "POLY4", "R1813", "POLY5", "POLY5_4"];
+const INSTRUMENT_SIZES: [usize; 6] = [4, 67, 5, 7, 7, 62];
+const NTSC: bool = true;
+const PAL: bool = false;
 
 fn instrument2name(instrument: u8) -> &'static str {
     INSTRUMENT_NAMES[instrument as usize]
@@ -53,34 +59,48 @@ fn write_note_table(unique_note_div_combos: &HashMap<(u8, u8), u8>, ntsc: bool) 
     let mut note_indices: Vec<_> = unique_note_div_combos.iter().collect();
     note_indices.sort_by(|a, b| a.1.cmp(b.1));
 
-    let mut fvals = Vec::<u16>::new();
+    let note_names = [
+        "c-", "c#", "d-", "d#", "e-", "f-", "f#", "g-", "g#", "a-", "a#", "b-",
+    ];
+
+    let mut fvals = Vec::<(u16, String, u8)>::new();
 
     for entry in note_indices {
-        let freq = note2freq(entry.0 .0);
-        let div = entry.0 .1;
-        let base_freq = if ntsc { 1193181.67 } else { 1182298.0 };
-        let fval = (65536.0
-            - freq * 256.0 * 256.0 / (base_freq / (88.0 + 14.0 / 256.0)) * (div as f64))
-            .round();
-        fvals.push(fval as u16);
+        if entry.0 .0 == 0 {
+            fvals.push((0xffff, "rest".to_string(), 0));
+        } else {
+            let freq = note2freq(entry.0 .0);
+            let div = entry.0 .1;
+            let base_freq = if ntsc { 1193181.67 } else { 1182298.0 };
+            let fval = (65536.0
+                - freq * 256.0 * 256.0 / (base_freq / (88.0 + 14.0 / 256.0)) * (div as f64))
+                .round();
+            let note_name = note_names[((entry.0 .0 - 1) % 12) as usize].to_owned()
+                + &(((entry.0 .0 - 1) / 12) as usize).to_string();
+            fvals.push((fval as u16, note_name, entry.0 .1));
+        }
     }
 
     note_table.write_all("note_table_hi\n".as_bytes()).unwrap();
     for entry in &fvals {
         note_table
-            .write_all(format!("\t!byte >${:x}\n", entry).as_bytes())
+            .write_all(
+                format!("\t!byte >${:x}\t; {}, div{}\n", entry.0, entry.1, entry.2).as_bytes(),
+            )
             .unwrap();
     }
 
     note_table.write_all("note_table_lo\n".as_bytes()).unwrap();
     for entry in &fvals {
         note_table
-            .write_all(format!("\t!byte <${:x}\n", entry).as_bytes())
+            .write_all(
+                format!("\t!byte >${:x}\t; {}, div{}\n", entry.0, entry.1, entry.2).as_bytes(),
+            )
             .unwrap();
     }
 }
 
-fn write_unique_instruments(xm: &xmkit::XModule, mut outfile: &File) {
+fn get_unique_instruments(xm: &xmkit::XModule) -> HashSet<u8> {
     let mut unique_instruments = HashSet::new();
     unique_instruments.insert(0);
 
@@ -97,6 +117,10 @@ fn write_unique_instruments(xm: &xmkit::XModule, mut outfile: &File) {
         }
     }
 
+    unique_instruments
+}
+
+fn write_unique_instruments(unique_instruments: &HashSet<u8>, mut outfile: &File) {
     let unique_instruments_v = INSTRUMENT_NAMES
         .iter()
         .filter(|name| unique_instruments.contains(&name2instrument(name)))
@@ -107,6 +131,13 @@ fn write_unique_instruments(xm: &xmkit::XModule, mut outfile: &File) {
             .write_all(format!("\t{} = {}\n", name, idx).as_bytes())
             .unwrap();
     }
+}
+
+fn instrument_data_size(unique_instruments: &HashSet<u8>) -> usize {
+    unique_instruments
+        .iter()
+        .map(|idx| INSTRUMENT_SIZES[*idx as usize])
+        .sum::<usize>()
 }
 
 fn get_used_pattern_ids(xm: &xmkit::XModule) -> Vec<usize> {
@@ -125,7 +156,7 @@ fn sequence_data_size(xm: &xmkit::XModule) -> usize {
         panic!("More than 254 patterns used.");
     }
 
-    xm.sequence().len() + 2 * used_ptns.len()
+    xm.sequence().len() + 2 + used_ptns.len() + used_ptns.len() / 2 + used_ptns.len() % 2
 }
 
 // writes sequence + pattern lookup table
@@ -170,11 +201,47 @@ fn write_sequence(xm: &xmkit::XModule, mut outfile: &File) {
         .write_all("\npattern_lookup_hi\n".as_bytes())
         .unwrap();
 
-    for p in &used_ptns {
-        outfile
-            .write_all(format!("\t!byte >ptn{:x}\n", p + 1).as_bytes())
-            .unwrap()
+    outfile
+        .write_all(format!("\t!byte (ptn{:x}>>4)&$f0\n", used_ptns[0] + 1).as_bytes())
+        .unwrap();
+
+    let mut used_ptns_hi = used_ptns;
+    const PADDING: usize = 0xff;
+    used_ptns_hi.remove(0);
+    used_ptns_hi.resize(
+        used_ptns_hi.len() + (2 - used_ptns_hi.len() % 2) % 2,
+        PADDING,
+    );
+
+    for pos in used_ptns_hi.chunks(2) {
+        outfile.write_all("\t!byte ".as_bytes()).unwrap();
+        if pos[1] == PADDING {
+            outfile
+                .write_all(format!("(ptn{:x}>>4)&$f0\n", pos[0] + 1).as_bytes())
+                .unwrap();
+        } else {
+            outfile
+                .write_all(
+                    format!(
+                        "((ptn{:x}>>8)&$f)|((ptn{:x}>>4)&$f0)\n",
+                        pos[0] + 1,
+                        pos[1] + 1
+                    )
+                    .as_bytes(),
+                )
+                .unwrap();
+        }
     }
+}
+
+fn write_definitions(xm: &xmkit::XModule) {
+    let mut outfile = File::create("def.h").unwrap();
+
+    outfile
+        .write_all(format!("\tBPM = {}\n", xm.bpm()).as_bytes())
+        .unwrap();
+
+    write_unique_instruments(&get_unique_instruments(xm), &outfile);
 }
 
 fn main() {
@@ -195,17 +262,11 @@ fn main() {
     }
 
     let mut outfile = File::create("music.asm").unwrap();
-    let mut total_byte_count: usize = 1;
+    let mut total_byte_count: usize = 0;
 
-    outfile
-        .write_all(format!("\tBPM = {}\n", xm.bpm()).as_bytes())
-        .unwrap();
-
-    write_unique_instruments(&xm, &outfile);
+    write_definitions(&xm);
 
     write_sequence(&xm, &outfile);
-
-    total_byte_count += sequence_data_size(&xm);
 
     let mut unique_note_div_combos = HashMap::<(u8, u8), u8>::new();
     unique_note_div_combos.insert((0, 0), 0);
@@ -309,7 +370,7 @@ fn main() {
                     };
 
                     let instr_str = if vibyte == 0 {
-                        "TONE"
+                        "SQUARE"
                     } else {
                         instrument2name(instr)
                     };
@@ -372,7 +433,7 @@ fn main() {
                     };
 
                     let instr_str = if vibyte == 0 {
-                        "TONE"
+                        "SQUARE"
                     } else {
                         instrument2name(instr)
                     };
@@ -414,26 +475,43 @@ fn main() {
                 );
             }
 
-            total_byte_count += bytecount + 1;
+            total_byte_count += bytecount;
         }
-    }
-
-    //TODO player size is now variable depending on included instruments
-    if total_byte_count + 0xf47e > 0xfffc {
-        panic!(
-            "Error: Maximum data size exceeded by {} bytes.",
-            total_byte_count + 0xf47e - 0xfffc
-        );
     }
 
     outfile.write_all("\nptnEnd\n".as_bytes()).unwrap();
 
-    write_note_table(&unique_note_div_combos, false);
-    write_note_table(&unique_note_div_combos, true);
+    write_note_table(&unique_note_div_combos, PAL);
+    write_note_table(&unique_note_div_combos, NTSC);
 
+    println!("player:      {:>4}", PLAYER_SIZE);
+    println!("patterns:    {:>4}", total_byte_count);
+    println!("sequence:    {:>4}", sequence_data_size(&xm));
     println!(
-        "Success, player+data written from 0xf000 to {:#x}, {:#x} bytes free",
-        total_byte_count + 0xf47e,
-        0xb7e - total_byte_count
+        "instruments: {:>4}",
+        instrument_data_size(&get_unique_instruments(&xm))
     );
+    println!("note_div:    {:>4}", unique_note_div_combos.len() * 2);
+
+    total_byte_count += PLAYER_SIZE
+        + sequence_data_size(&xm)
+        + instrument_data_size(&get_unique_instruments(&xm))
+        + unique_note_div_combos.len() * 2;
+
+    println!("total:       {:>4}", total_byte_count);
+
+    if total_byte_count > MAX_BIN_SIZE {
+        println!(
+            "ERROR: Maximum data size exceeded by {} bytes.",
+            total_byte_count - MAX_BIN_SIZE
+        );
+        std::process::exit(1);
+    } else {
+        println!(
+            "Success, player+data written from {:#x} to {:#x}, {} bytes free.",
+            DEFAULT_ORIGIN,
+            DEFAULT_ORIGIN + total_byte_count,
+            MAX_BIN_SIZE - (total_byte_count)
+        );
+    }
 }
