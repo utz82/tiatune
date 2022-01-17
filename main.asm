@@ -230,8 +230,8 @@ InitVal
 !ifdef POLY4        { !byte   $02 }
 !ifdef R1813        { !byte   $02 }
 !ifdef POLY5        { !byte   $02 }
-!ifdef POLY5_4      { !byte   $80 }
-!ifdef R1813_POLY4  { !byte   $80 }
+!ifdef POLY5_4      { !byte   $40 }
+!ifdef R1813_POLY4  { !byte   $40 }
 
 ResetVal
 !ifdef SQUARE       { !byte    1-1 }
@@ -288,18 +288,17 @@ ReadPtn
     eor     #$ff                ;CF==1!
     adc     pattern_lookup_lo,x
     sta     ptrOffsEnd          ;begin of next pattern - begin of current pattern
-;    txa
-;    lsr
-;    tax
-    lda     pattern_lookup_hi-1,x
-;    bcc     .even
-;    lsr
-;    lsr
-;    lsr
-;    lsr
-;.even
-;    and     #$0f
-;    ora     #>ptn1 & $f0
+    txa
+    lsr
+    tax
+    lda     pattern_lookup_hi,x
+    bcc     .even
+    lsr
+    lsr
+    lsr
+    lsr
+.even
+    ora     #$10                ;bit4 must be set!
     sta     ptnPtrH
     inc     seqOffs
     ldy     #0

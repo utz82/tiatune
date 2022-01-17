@@ -37,7 +37,7 @@ Limitations
 ===========
 
 - 100% CPU time used, cannot render graphics at the same time as playing music
-- fairly large player (517 bytes with demo music, was 1147 bytes)
+- fairly large player (528 bytes with demo music, was 1147 bytes)
 
 
 The TIAtune source is designed to be assembled with the ACME cross-assembler.
@@ -98,19 +98,23 @@ The sequence may at most contain 255 entries.
 The pattern pointer are split into a hi-byte and a lo-byte part, labelled
 "pattern_lookup_hi" and "pattern_lookup_lo", respectively. The pattern pointer
 must be ordered like the pattern definitions. The lo-list must be terminated
-with the lo-pointer to the byte after the last pattern.
+with the lo-pointer to the byte after the last pattern. For the hi-pointer, two
+pointers are encoded into one byte (see example below).
 
 The most simple sequence would thus be:
 
 sequence
-    !byte 1
+    !byte 1 ;index to pattern1
     !byte 0 ;terminator
 
-pattern_lookup_hi
-    !byte >pattern
 pattern_lookup_lo
-    !byte <pattern
+    !byte <pattern1
+    !byte <pattern2
+    !byte <pattern3
     !byte <patternEnd ; terminator
+pattern_lookup_hi
+    !byte (>pattern1>>4)&$f0
+    !byte ((pattern2>>8)&$f)|((>pattern3>>4)&$f0)
 
 Patterns
 ========
