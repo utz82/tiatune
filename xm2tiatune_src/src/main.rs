@@ -14,8 +14,16 @@ use std::str;
 const DEFAULT_ORIGIN: usize = 0xf000;
 const PLAYER_SIZE: usize = 290;
 const MAX_BIN_SIZE: usize = 0xffc;
-const INSTRUMENT_NAMES: [&str; 6] = ["SQUARE", "POLY9", "POLY4", "R1813", "POLY5", "POLY5_4"];
-const INSTRUMENT_SIZES: [usize; 6] = [4, 67, 5, 7, 7, 62];
+const INSTRUMENT_NAMES: [&str; 7] = [
+    "SQUARE",
+    "POLY9",
+    "POLY4",
+    "R1813",
+    "POLY5",
+    "POLY5_4",
+    "R1813_POLY4",
+];
+const INSTRUMENT_SIZES: [usize; 7] = [4, 67, 5, 7, 7, 62, 62];
 const NTSC: bool = true;
 const PAL: bool = false;
 
@@ -27,11 +35,14 @@ fn name2instrument(name: &str) -> u8 {
     INSTRUMENT_NAMES.iter().position(|&n| n == name).unwrap() as u8
 }
 
-fn instrument2div(instrument: u8) -> u8 {
+// returns divider*2, to avoid dealing with floats at this point
+fn instrument2div(instrument: u8) -> u16 {
     match instrument {
-        0 | 1 => 2,
-        2 => 15,
-        3 | 4 => 31,
+        0 | 1 => 4,
+        2 => 30,
+        3 | 4 => 62,
+        5 => 248,
+        6 => 465,
         _ => panic!("Invalid instrument used"),
     }
 }
@@ -47,7 +58,15 @@ fn note2freq(note: u8) -> f64 {
     }
 }
 
-fn write_note_table(unique_note_div_combos: &HashMap<(u8, u8), u8>, ntsc: bool) {
+fn note2freq_div(note_idx: u8, instr_div: u16, ntsc: bool) -> u16 {
+    let freq = note2freq(note_idx);
+    let base_freq = if ntsc { 1193181.67 } else { 1182298.0 };
+    (65536.0
+        - freq * 256.0 * 256.0 / (base_freq / (88.0 + 14.0 / 256.0)) * ((instr_div as f64) / 2.0))
+        .round() as u16
+}
+
+fn write_note_table(unique_note_div_combos: &HashMap<(u8, u16), u8>, ntsc: bool) {
     let filename = if ntsc {
         "note_table_ntsc.h"
     } else {
@@ -63,21 +82,16 @@ fn write_note_table(unique_note_div_combos: &HashMap<(u8, u8), u8>, ntsc: bool) 
         "c-", "c#", "d-", "d#", "e-", "f-", "f#", "g-", "g#", "a-", "a#", "b-",
     ];
 
-    let mut fvals = Vec::<(u16, String, u8)>::new();
+    let mut fvals = Vec::<(u16, String, u16)>::new();
 
     for entry in note_indices {
         if entry.0 .0 == 0 {
             fvals.push((0xffff, "rest".to_string(), 0));
         } else {
-            let freq = note2freq(entry.0 .0);
-            let div = entry.0 .1;
-            let base_freq = if ntsc { 1193181.67 } else { 1182298.0 };
-            let fval = (65536.0
-                - freq * 256.0 * 256.0 / (base_freq / (88.0 + 14.0 / 256.0)) * (div as f64))
-                .round();
+            let fval = note2freq_div(entry.0 .0, entry.0 .1, ntsc);
             let note_name = note_names[((entry.0 .0 - 1) % 12) as usize].to_owned()
                 + &(((entry.0 .0 - 1) / 12) as usize).to_string();
-            fvals.push((fval as u16, note_name, entry.0 .1));
+            fvals.push((fval, note_name, entry.0 .1));
         }
     }
 
@@ -85,7 +99,13 @@ fn write_note_table(unique_note_div_combos: &HashMap<(u8, u8), u8>, ntsc: bool) 
     for entry in &fvals {
         note_table
             .write_all(
-                format!("\t!byte >${:x}\t; {}, div{}\n", entry.0, entry.1, entry.2).as_bytes(),
+                format!(
+                    "\t!byte >${:x}\t; {}, div{}\n",
+                    entry.0,
+                    entry.1,
+                    (entry.2 as f64 / 2.0)
+                )
+                .as_bytes(),
             )
             .unwrap();
     }
@@ -94,7 +114,13 @@ fn write_note_table(unique_note_div_combos: &HashMap<(u8, u8), u8>, ntsc: bool) 
     for entry in &fvals {
         note_table
             .write_all(
-                format!("\t!byte >${:x}\t; {}, div{}\n", entry.0, entry.1, entry.2).as_bytes(),
+                format!(
+                    "\t!byte <${:x}\t; {}, div{}\n",
+                    entry.0,
+                    entry.1,
+                    (entry.2 as f64 / 2.0)
+                )
+                .as_bytes(),
             )
             .unwrap();
     }
@@ -217,7 +243,7 @@ fn write_sequence(xm: &xmkit::XModule, mut outfile: &File) {
         outfile.write_all("\t!byte ".as_bytes()).unwrap();
         if pos[1] == PADDING {
             outfile
-                .write_all(format!("(ptn{:x}>>4)&$f0\n", pos[0] + 1).as_bytes())
+                .write_all(format!("(ptn{:x}>>8)&$f\n", pos[0] + 1).as_bytes())
                 .unwrap();
         } else {
             outfile
@@ -268,7 +294,7 @@ fn main() {
 
     write_sequence(&xm, &outfile);
 
-    let mut unique_note_div_combos = HashMap::<(u8, u8), u8>::new();
+    let mut unique_note_div_combos = HashMap::<(u8, u16), u8>::new();
     unique_note_div_combos.insert((0, 0), 0);
 
     for (ptn_num, ptn) in xm.patterns.iter().enumerate() {
@@ -346,8 +372,9 @@ fn main() {
                     if instruments_ch1[row] == 2 && notebyte != 0 {
                         notebyte += 12;
                     }
-                    if (instruments_ch1[row] == 3 && notebyte > 53)
-                        || (instruments_ch1[row] > 3 && notebyte > 41)
+                    if instruments_ch2[row] != 0
+                        && note2freq_div(notebyte, instrument2div(instruments_ch1[row] - 1), PAL)
+                            == 0
                     {
                         println!(
                             "Replaced out-of-range note in pattern {:#x}, \
@@ -409,8 +436,9 @@ fn main() {
                     if instruments_ch2[row] == 2 && notebyte != 0 {
                         notebyte += 12;
                     }
-                    if (instruments_ch2[row] == 3 && notebyte > 53)
-                        || (instruments_ch2[row] > 3 && notebyte > 41)
+                    if instruments_ch2[row] != 0
+                        && note2freq_div(notebyte, instrument2div(instruments_ch2[row] - 1), PAL)
+                            == 0
                     {
                         println!(
                             "Replaced out-of-range note in pattern {:#x}, \
