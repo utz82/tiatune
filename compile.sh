@@ -3,9 +3,9 @@
 ./xm2tiatune
 if [ "$?" = "0" ]
 then
-  acme main.asm
+  acme -Wno-bin-len -r tiatune.lst main.asm
   if [ "$?" = "0" ]
-  then 
+  then
     stella tiatune.bin
   fi
 fi
