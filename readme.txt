@@ -29,8 +29,8 @@ Features
 
 - 16-bit frequency dividers (accurate pitch within <0.15% margin)
 - sample rate: 13.5 KHz
-- per-step tempo, 6-bit tempo resolution
-- BPM (~2.5 BMP granularity).
+- variable step length, 6-bit resolution
+- variable global tempo (~2.5bpm granularity)
 
 
 Limitations
@@ -57,11 +57,11 @@ The following limitations apply:
 - Any changes to instruments/samples are ignored.
 - FX commands are ignored, except for Fxx (change tempo, xx < 0x20)
 - The range of instruments is limited:
-  - instruments 1 and 2: C0..G#8
-  - instrument 3: C0..A5
-  - instruments 4, 5 and 6: C0..G#4
-  - instrument 7: C0..G#2
-  - instrument 8: C0..A1
+  - instruments 1 and 2: C-0..G#8
+  - instrument 3: C-0..A-6
+  - instruments 4, 5 and 6: C-0..G#5
+  - instrument 7: C-0..A-1
+  - instrument 8: C-0..A-1
 
 Pattern length is also limited. The actual limit depends on the converted data
 size. In the worst case, you will run out of bytes after 51 rows, but normally
@@ -83,7 +83,8 @@ main directory.
 MUSIC DATA FORMAT
 ================================================================================
 
-Music data for TIAtune consists of a sequence, followed by one or more patterns.
+Music data for TIAtune consists of a sequence, followed by one or more patterns,
+and additionally a lookup table for used note dividers.
 The music data must be provided in a file named "music.asm", which is included
 by the main file.
 
@@ -91,15 +92,15 @@ by the main file.
 Sequence
 ========
 
-The sequence contains a list of ids of pointers to patterns, in the order in
-which they are to be played. The sequence list must be terminated with a 0-byte.
-The sequence may at most contain 255 entries.
+The sequence contains a list of 8-bit IDs of pointers to patterns, in the order
+in which they are to be played. The sequence list must be terminated with a
+0-byte. The sequence may at most contain 255 entries.
 
-The pattern pointer are split into a hi-byte and a lo-byte part, labelled
-"pattern_lookup_hi" and "pattern_lookup_lo", respectively. The pattern pointer
-must be ordered like the pattern definitions. The lo-list must be terminated
-with the lo-pointer to the byte after the last pattern. For the hi-pointer, two
-pointers are encoded into one byte (see example below).
+The pattern lookup table is split into a hi-byte and a lo-byte part, labelled
+"pattern_lookup_hi" and "pattern_lookup_lo", respectively. Pattern pointers
+must be ordered by their respective IDs. The lo-list must be terminated with the
+lo-pointer to the byte after the last pattern. For the hi-pointer, two pointers
+are encoded into one byte (see example below).
 
 The most simple sequence would thus be:
 
@@ -129,10 +130,10 @@ byte  bits   function
       0..5   tempo (step length)
 2     0..2   waveform channel 1 (0..4)
       3..6   volume channel 1
-3     0..7   note channel 1
+3     0..7   note index channel 1
 4     0..2   waveform channel 2 (0..4)
       3..6   volume channel 2
-5     0..7   note channel 2
+5     0..7   note index channel 2
 
 If bit 0 of byte 1 is set, byte 2 and 3 are omitted. Likewise, if bit 1 of byte
 1 is set, byte 4 and 5 are omitted. On the first step of the first pattern in
@@ -142,16 +143,41 @@ AUDCx equivalents of the waveform parameter, and their note ranges are as
 follows:
 
 wave  AUDCx      range
-0     4,5,C,D    C0..G#8
-1     8          C0..G#8
-2     1          C0..A5
-3     6,A        C0..G#4
-4     7,9        C0..G#4
-5     3          C0..G#2
-6     2          C0..A1
+0     4,5,C,D    C-0..G#8
+1     8          C-0..G#8
+2     1          C-0..A-6
+3     6,A        C-0..G#5
+4     7,9        C-0..G#5
+5     3          C-0..A-1
+6     2          C-0..A-1
 
 Each pattern may contain up to 255 data bytes. Thus, each pattern may contain at
 least 51 steps. In most cases however, it is advisable to use shorter patterns,
 to optimize overall data usage.
+
+Note Divider Lookup
+===================
+
+The note divider lookup table must be provided separately for PAL and NTSC
+timings, using files named "note_table_pal.h" and "note_table_ntsc.h",
+respectively. The lookup table must include values for each unique note +
+wave period combination. The table must be sorted by note index, as used in the
+pattern section.
+
+To derive the divider value NDIV from a note frequency NOTE_FREQ and a wave
+period WP:
+
+NDIV = 0x10000 - NOTE_FREQ * 256 * 256 / (BASE_FREQ / (88 + 14 / 256)) * WP
+
+where BASE_FREQ is 1193181.67 for NTSC, and 1182298.0 for PAL, and WP may be
+assumed as:
+
+wave period
+0    2
+1    any, converter uses 4
+2    15 (converter uses 7.5)
+3,4  31 (converter uses 15.5)
+5,6  465 (converter uses 232.5)
+
 
 For more information, check the provided example music.asm file.
