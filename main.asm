@@ -30,7 +30,6 @@
 ;3     6,A        c-0..gis-4    r1813   div31
 ;4     7,9        c-0..gis-4    poly5   div31
 ;5     3                        poly5_4 div31
-;TODO:
 ;6     2                        poly4   r1813
 
 ;Assembler switches
