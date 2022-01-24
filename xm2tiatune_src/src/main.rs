@@ -372,7 +372,7 @@ fn main() {
                     if instruments_ch1[row] == 2 && notebyte != 0 {
                         notebyte += 12;
                     }
-                    if instruments_ch2[row] != 0
+                    if instruments_ch1[row] != 0
                         && note2freq_div(notebyte, instrument2div(instruments_ch1[row] - 1), PAL)
                             == 0
                     {
