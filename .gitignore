@@ -2,6 +2,9 @@ xm2tiatune_src/target
 *.lock
 *.bin
 *.sym
+*.lst
 music.asm
+def.h
+note_table_*.h
 acme
 xm2tiatune
