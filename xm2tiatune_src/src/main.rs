@@ -39,10 +39,9 @@ fn name2instrument(name: &str) -> u8 {
 fn instrument2div(instrument: u8) -> u16 {
     match instrument {
         0 | 1 => 4,
-        2 => 30,
-        3 | 4 => 62,
-        5 => 248,
-        6 => 465,
+        2 => 15,
+        3 | 4 => 31,
+        5 | 6 => 465,
         _ => panic!("Invalid instrument used"),
     }
 }
