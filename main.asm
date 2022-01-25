@@ -34,7 +34,7 @@
 
 ;Assembler switches
 NTSC    = 0     ; else use PAL frequencies
-VISUALS = 0     ; add some visuals (both channels) (+38 bytes)
+VISUALS = 1     ; add some visuals (both channels) (+38 bytes)
 DEBUG   = 1     ; enable debug output
 MUSIC   = 0     ; chose track (0..2)
 
