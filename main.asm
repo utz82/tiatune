@@ -1,7 +1,7 @@
 ;TIAtune
 ;Atari 2600 music player
 ;by utz 10'2017 * irrlichtproject.de
-;improved by Thomas Jentzsch & utz 01'2021
+;improved by Thomas Jentzsch & utz 01'2022
 
 ; Ideas:
 ; + get rid of initial CLC
@@ -244,12 +244,22 @@ ResetVal
 CodeStart
 Reset
 ;reset code adapted from Hard2632
--                               ;clear TIA regs, most RAM, set SP to $00ff
-    lsr
-    tsx
+;-                               ;clear TIA regs, most RAM, set SP to $00ff
+;    lsr
+;    tsx
+;    pha
+;    bne      -
+;    cld
+
+; fixed for 0.3.1
+    lda     #0
+    tax
+    cld                     ; clear BCD math bit
+-
+    dex
+    txs
     pha
-    bne      -
-    cld
+    bne     -
 
 !if VISUALS {
 ;position and size players
