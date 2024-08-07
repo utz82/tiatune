@@ -1,7 +1,7 @@
 ;TIAtune
 ;Atari 2600 music player
 ;by utz 10'2017 * irrlichtproject.de
-;improved by Thomas Jentzsch & utz 01'2021
+;improved by Thomas Jentzsch & utz 01'2022
 
 ; Ideas:
 ; + get rid of initial CLC
